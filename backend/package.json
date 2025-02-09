@@ -1,0 +1,58 @@
+{
+    "name": "collaborative-map-backend",
+    "version": "1.0.0",
+    "description": "Backend for real-time collaborative map application with spatial comments",
+    "main": "dist/index.js",
+    "type": "module",
+    "engines": {
+        "node": ">=18.0.0",
+        "npm": ">=8.0.0"
+    },
+    "scripts": {
+        "start": "node dist/index.js",
+        "dev": "nodemon",
+        "build": "tsc",
+        "type-check": "tsc -p tsconfig.json --noEmit",
+        "type-check:watch": "tsc -p tsconfig.test.json --noEmit --watch",
+        "lint": "eslint \"src/**/*.ts\"",
+        "lint-full": "npm run type-check && npm run lint",
+        "knip": "knip"
+    },
+    "dependencies": {
+        "compression": "^1.7.5",
+        "cors": "^2.8.5",
+        "dotenv": "^16.4.7",
+        "express": "^4.21.2",
+        "express-rate-limit": "^7.5.0",
+        "helmet": "^8.0.0",
+        "pg-promise": "^11.10.2",
+        "pino": "^9.6.0",
+        "socket.io": "^4.8.1",
+        "swagger-jsdoc": "^6.2.8",
+        "swagger-ui-express": "^5.0.1",
+        "uuid": "^11.0.5",
+        "zod": "^3.24.1"
+    },
+    "devDependencies": {
+        "@types/compression": "^1.7.5",
+        "@types/cors": "^2.8.17",
+        "@types/express": "^5.0.0",
+        "@types/jest": "^29.5.14",
+        "@types/node": "^22.13.1",
+        "@types/socket.io": "^3.0.2",
+        "@types/swagger-jsdoc": "^6.0.4",
+        "@types/swagger-ui-express": "^4.1.7",
+        "@types/uuid": "^10.0.0",
+        "@typescript-eslint/eslint-plugin": "^8.23.0",
+        "@typescript-eslint/parser": "^8.23.0",
+        "eslint": "^9.20.0",
+        "eslint-config-prettier": "^10.0.1",
+        "eslint-plugin-prettier": "^5.2.3",
+        "knip": "^5.43.6",
+        "nodemon": "^3.1.9",
+        "prettier": "^3.5.0",
+        "typescript": "^5.7.3",
+        "@types/express-serve-static-core": "^5.0.6",
+        "@types/qs": "^6.9.18"
+    }
+}
