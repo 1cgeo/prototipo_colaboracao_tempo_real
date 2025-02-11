@@ -1,64 +1,119 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { Socket } from 'socket.io-client';
-import { initializeSocket, disconnectSocket } from '../utils/api';
+import { initializeSocket, disconnectSocket, getSocket, wsEvents } from '../utils/api';
 import { 
-  RoomJoinEvent, 
-  RoomLeaveEvent, 
+  AuthenticationSuccess, 
+  AuthenticationError,
+  RoomStateEvent,
+  RoomJoinEvent,
+  RoomLeaveEvent,
   CursorMoveEvent,
-  AuthenticationSuccess,
-  AuthenticationError
+  CommentCreateEvent,
+  CommentUpdateEvent,
+  CommentDeleteEvent,
+  ReplyCreateEvent,
+  ReplyUpdateEvent,
+  ReplyDeleteEvent,
+  Point,
+  APIError
 } from '../types';
 
 interface UseWebSocketOptions {
   userId: string;
+  displayName: string;
   onAuthSuccess?: (data: AuthenticationSuccess) => void;
   onAuthError?: (error: AuthenticationError) => void;
+  onRoomState?: (state: RoomStateEvent) => void;
   onJoin?: (event: RoomJoinEvent) => void;
   onLeave?: (event: RoomLeaveEvent) => void;
   onCursorMove?: (event: CursorMoveEvent) => void;
+  onCommentCreate?: (event: CommentCreateEvent) => void;
+  onCommentUpdate?: (event: CommentUpdateEvent) => void;
+  onCommentDelete?: (event: CommentDeleteEvent) => void;
+  onReplyCreate?: (event: ReplyCreateEvent) => void;
+  onReplyUpdate?: (event: ReplyUpdateEvent) => void;
+  onReplyDelete?: (event: ReplyDeleteEvent) => void;
   onError?: (error: Error) => void;
   onReconnect?: () => void;
 }
 
+interface WebSocketState {
+  connected: boolean;
+  authenticating: boolean;
+  currentRoom: string | null;
+  reconnectAttempts: number;
+}
+
+const MAX_RECONNECT_ATTEMPTS = 5;
+
+const isAuthenticationError = (error: unknown): error is AuthenticationError => {
+  return error instanceof Error && 'code' in error;
+};
+
 const useWebSocket = ({
   userId,
+  displayName,
   onAuthSuccess,
   onAuthError,
+  onRoomState,
   onJoin,
   onLeave,
   onCursorMove,
+  onCommentCreate,
+  onCommentUpdate,
+  onCommentDelete,
+  onReplyCreate,
+  onReplyUpdate,
+  onReplyDelete,
   onError,
   onReconnect
 }: UseWebSocketOptions) => {
-  const [socket, setSocket] = useState<Socket | null>(null);
-  const [connected, setConnected] = useState(false);
-  const [authenticating, setAuthenticating] = useState(false);
+  const [state, setState] = useState<WebSocketState>({
+    connected: false,
+    authenticating: false,
+    currentRoom: null,
+    reconnectAttempts: 0
+  });
 
   // Initialize socket connection
   useEffect(() => {
     let mounted = true;
-    setAuthenticating(true);
+    setState(prev => ({ ...prev, authenticating: true }));
 
     const connectSocket = async () => {
       try {
-        const authData = await initializeSocket(userId);
+        const authData = await initializeSocket({ 
+          user_id: userId, 
+          display_name: displayName 
+        });
+        
         if (!mounted) return;
 
-        const socket = window.io;
-        if (socket) {
-          setSocket(socket);
-          setConnected(true);
-          onAuthSuccess?.(authData);
-        }
+        setState(prev => ({ 
+          ...prev, 
+          connected: true,
+          authenticating: false,
+          reconnectAttempts: 0
+        }));
+        onAuthSuccess?.(authData);
       } catch (error) {
         if (!mounted) return;
-        setConnected(false);
-        onAuthError?.(error as AuthenticationError);
-        onError?.(error as Error);
-      } finally {
-        if (mounted) {
-          setAuthenticating(false);
+        
+        setState(prev => ({ 
+          ...prev, 
+          connected: false,
+          authenticating: false
+        }));
+
+        if (error instanceof APIError) {
+          onAuthError?.({
+            code: error.code,
+            message: error.message,
+            details: error.details
+          });
         }
+        
+        onError?.(error instanceof Error ? error : new Error('Unknown error'));
       }
     };
 
@@ -68,99 +123,176 @@ const useWebSocket = ({
       mounted = false;
       disconnectSocket();
     };
-  }, [userId, onAuthSuccess, onAuthError, onError]);
+  }, [userId, displayName, onAuthSuccess, onAuthError, onError]);
 
   // Setup socket event listeners
   useEffect(() => {
+    const socket = getSocket();
     if (!socket) return;
 
     // Connection events
-    socket.on('connect', () => {
-      setConnected(true);
-    });
+    const handleConnect = () => {
+      setState(prev => ({ 
+        ...prev, 
+        connected: true,
+        reconnectAttempts: 0
+      }));
 
-    socket.on('disconnect', () => {
-      setConnected(false);
-    });
+      // Rejoin room if we were in one
+      if (state.currentRoom) {
+        wsEvents.joinRoom(state.currentRoom);
+      }
+    };
 
-    socket.on('reconnect', () => {
+    const handleDisconnect = (reason: Socket.DisconnectReason) => {
+      setState(prev => ({ 
+        ...prev, 
+        connected: false
+      }));
+      
+      if (reason === 'io server disconnect') {
+        return; // Server initiated disconnect, don't reconnect
+      }
+
+      if (state.reconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
+        setState(prev => ({
+          ...prev,
+          reconnectAttempts: prev.reconnectAttempts + 1
+        }));
+      }
+    };
+
+    const handleReconnect = () => {
       onReconnect?.();
-    });
+    };
 
-    socket.on('error', (error: Error) => {
+    const handleError = (error: Error) => {
       onError?.(error);
-    });
+    };
 
     // Room events
-    socket.on('room:join', (event: RoomJoinEvent) => {
+    const handleRoomState = (event: RoomStateEvent) => {
+      onRoomState?.(event);
+    };
+
+    const handleUserJoin = (event: RoomJoinEvent) => {
       onJoin?.(event);
-    });
+    };
 
-    socket.on('room:leave', (event: RoomLeaveEvent) => {
+    const handleUserLeave = (event: RoomLeaveEvent) => {
       onLeave?.(event);
-    });
+    };
 
-    socket.on('cursor:move', (event: CursorMoveEvent) => {
+    const handleCursorMove = (event: CursorMoveEvent) => {
       onCursorMove?.(event);
-    });
+    };
+
+    // Comment events
+    const handleCommentCreate = (event: CommentCreateEvent) => {
+      onCommentCreate?.(event);
+    };
+
+    const handleCommentUpdate = (event: CommentUpdateEvent) => {
+      onCommentUpdate?.(event);
+    };
+
+    const handleCommentDelete = (event: CommentDeleteEvent) => {
+      onCommentDelete?.(event);
+    };
+
+    // Reply events
+    const handleReplyCreate = (event: ReplyCreateEvent) => {
+      onReplyCreate?.(event);
+    };
+
+    const handleReplyUpdate = (event: ReplyUpdateEvent) => {
+      onReplyUpdate?.(event);
+    };
+
+    const handleReplyDelete = (event: ReplyDeleteEvent) => {
+      onReplyDelete?.(event);
+    };
+
+    // Register all event listeners
+    socket.on('connect', handleConnect);
+    socket.on('disconnect', handleDisconnect);
+    socket.on('reconnect', handleReconnect);
+    socket.on('error', handleError);
+    socket.on('room:state', handleRoomState);
+    socket.on('room:join', handleUserJoin);
+    socket.on('room:leave', handleUserLeave);
+    socket.on('cursor:move', handleCursorMove);
+    socket.on('comment:create', handleCommentCreate);
+    socket.on('comment:update', handleCommentUpdate);
+    socket.on('comment:delete', handleCommentDelete);
+    socket.on('reply:create', handleReplyCreate);
+    socket.on('reply:update', handleReplyUpdate);
+    socket.on('reply:delete', handleReplyDelete);
 
     return () => {
-      socket.off('connect');
-      socket.off('disconnect');
-      socket.off('reconnect');
-      socket.off('error');
-      socket.off('room:join');
-      socket.off('room:leave');
-      socket.off('cursor:move');
+      // Cleanup all event listeners
+      socket.off('connect', handleConnect);
+      socket.off('disconnect', handleDisconnect);
+      socket.off('reconnect', handleReconnect);
+      socket.off('error', handleError);
+      socket.off('room:state', handleRoomState);
+      socket.off('room:join', handleUserJoin);
+      socket.off('room:leave', handleUserLeave);
+      socket.off('cursor:move', handleCursorMove);
+      socket.off('comment:create', handleCommentCreate);
+      socket.off('comment:update', handleCommentUpdate);
+      socket.off('comment:delete', handleCommentDelete);
+      socket.off('reply:create', handleReplyCreate);
+      socket.off('reply:update', handleReplyUpdate);
+      socket.off('reply:delete', handleReplyDelete);
     };
-  }, [socket, onJoin, onLeave, onCursorMove, onError, onReconnect]);
+  }, [
+    state.currentRoom,
+    state.reconnectAttempts,
+    onRoomState,
+    onJoin,
+    onLeave,
+    onCursorMove,
+    onCommentCreate,
+    onCommentUpdate,
+    onCommentDelete,
+    onReplyCreate,
+    onReplyUpdate,
+    onReplyDelete,
+    onError,
+    onReconnect
+  ]);
 
-  // Emit room join event
+  // Room management functions
   const joinRoom = useCallback((roomId: string) => {
-    if (!socket || !connected) {
+    if (!state.connected) {
       throw new Error('Socket not connected');
     }
 
-    socket.emit('room:join', {
-      roomId,
-      userId,
-      timestamp: Date.now()
-    });
-  }, [socket, connected, userId]);
+    setState(prev => ({ ...prev, currentRoom: roomId }));
+    wsEvents.joinRoom(roomId);
+  }, [state.connected]);
 
-  // Emit room leave event
   const leaveRoom = useCallback((roomId: string) => {
-    if (!socket || !connected) return;
+    if (!state.connected) return;
 
-    socket.emit('room:leave', {
-      roomId,
-      userId,
-      timestamp: Date.now()
-    });
-  }, [socket, connected, userId]);
+    setState(prev => ({ ...prev, currentRoom: null }));
+    wsEvents.leaveRoom(roomId);
+  }, [state.connected]);
 
-  // Emit cursor move event with throttling
-  const updateCursor = useCallback((roomId: string, coordinates: [number, number]) => {
-    if (!socket || !connected) return;
-
-    socket.emit('cursor:move', {
-      roomId,
-      userId,
-      location: {
-        type: 'Point',
-        coordinates
-      },
-      timestamp: Date.now()
-    });
-  }, [socket, connected, userId]);
+  // Cursor update function
+  const updateCursor = useCallback((roomId: string, location: Point) => {
+    if (!state.connected) return;
+    wsEvents.moveCursor(roomId, location);
+  }, [state.connected]);
 
   return {
-    socket,
-    connected,
-    authenticating,
+    socket: getSocket(),
+    connected: state.connected,
+    authenticating: state.authenticating,
     joinRoom,
     leaveRoom,
-    updateCursor
+    updateCursor,
   };
 };
 

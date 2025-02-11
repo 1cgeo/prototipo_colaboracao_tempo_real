@@ -62,13 +62,13 @@ const ReplyList: React.FC<ReplyListProps> = ({
               </Typography>
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                 <UserBadge
-                  userId={reply.authorId}
-                  displayName={getUserDisplayName(reply.authorId)}
+                  userId={reply.author_id}
+                  displayName={getUserDisplayName(reply.author_id)}
                   size="small"
                   abbreviated
                 />
                 <Typography variant="caption" color="text.secondary">
-                  • {formatDistanceToNow(new Date(reply.createdAt))} ago
+                  • {formatDistanceToNow(new Date(reply.created_at))} ago
                 </Typography>
               </Box>
             </Box>

@@ -21,18 +21,40 @@ const theme = createTheme({
   },
 });
 
-// Get or create persistent userId
-const getUserId = (): string => {
-  const stored = localStorage.getItem('userId');
-  if (stored) return stored;
+// Generate random display name
+const generateDisplayName = (): string => {
+  const firstNames = [
+    'Alex', 'Blake', 'Casey', 'Drew', 'Eden',
+    'Finn', 'Gray', 'Harley', 'Indigo', 'Jamie'
+  ];
+  const lastNames = [
+    'Smith', 'Jones', 'Brown', 'Taylor', 'Wilson',
+    'Davis', 'Miller', 'Moore', 'Clark', 'Lee'
+  ];
 
-  const newId = uuidv4();
-  localStorage.setItem('userId', newId);
-  return newId;
+  const firstName = firstNames[Math.floor(Math.random() * firstNames.length)];
+  const lastName = lastNames[Math.floor(Math.random() * lastNames.length)];
+
+  return `${firstName} ${lastName}`;
+};
+
+// Get or create persistent userId and displayName
+const getUserInfo = (): { userId: string; displayName: string } => {
+  const stored = localStorage.getItem('userInfo');
+  if (stored) {
+    return JSON.parse(stored);
+  }
+
+  const newInfo = {
+    userId: uuidv4(),
+    displayName: generateDisplayName()
+  };
+  localStorage.setItem('userInfo', JSON.stringify(newInfo));
+  return newInfo;
 };
 
 const AppContent: React.FC = () => {
-  const [userId] = useState(getUserId);
+  const [{ userId, displayName }] = useState(getUserInfo);
   const [initializing, setInitializing] = useState(true);
   const { enqueueSnackbar } = useSnackbar();
 
@@ -69,7 +91,7 @@ const AppContent: React.FC = () => {
   }
 
   return (
-    <CollaborationProvider userId={userId}>
+    <CollaborationProvider userId={userId} displayName={displayName}>
       <MapProvider>
         <Layout>
           <MapView />

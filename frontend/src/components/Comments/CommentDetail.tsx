@@ -155,12 +155,12 @@ const CommentDetail: React.FC<CommentDetailProps> = ({ comment, onClose }) => {
         </Typography>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
           <UserBadge
-            userId={comment.authorId}
-            displayName={getUserDisplayName(comment.authorId)}
+            userId={comment.author_id}
+            displayName={getUserDisplayName(comment.author_id)}
             size="small"
           />
           <Typography variant="caption" color="text.secondary">
-            • {formatDistanceToNow(new Date(comment.createdAt))} ago
+            • {formatDistanceToNow(new Date(comment.created_at))} ago
           </Typography>
         </Box>
 
@@ -252,7 +252,7 @@ const CommentDetail: React.FC<CommentDetailProps> = ({ comment, onClose }) => {
         error={error}
         comment={comment}
         onClose={() => setDialogState({ type: 'reply', open: false })}
-        onSubmit={({ content }) => handleReplyCreate(content)}
+        onSubmit={handleReplyCreate}
       />
     </Card>
   );

@@ -1,8 +1,9 @@
 import React, { createContext, useContext, useState, useCallback } from 'react';
 import { Socket } from 'socket.io-client';
 import { 
-  Room, User, Point, Activity,
-  AuthenticationSuccess, AuthenticationError
+  Room, RoomDetails, User, Point, Activity,
+  AuthenticationSuccess, AuthenticationError,
+  UIActivity
 } from '../types';
 import { useWebSocket, useActivity } from '../hooks';
 
@@ -16,10 +17,12 @@ interface CollaborationContextState {
   connected: boolean;
   authenticating: boolean;
   currentUser: AuthenticationSuccess | null;
-  currentRoom: Room | null;
+  currentRoom: RoomDetails | null;
   users: User[];
   cursors: Record<string, CursorPosition>;
-  activities: Activity[];
+  activities: UIActivity[];
+  hasMoreActivities: boolean;
+  loading: boolean;
   error: Error | null;
 }
 
@@ -28,6 +31,7 @@ interface CollaborationContextActions {
   leaveRoom: () => void;
   updateCursor: (position: Point) => void;
   getUserDisplayName: (userId: string) => string;
+  loadMoreActivities: () => Promise<void>;
 }
 
 const CollaborationContext = createContext<
@@ -38,17 +42,20 @@ const CollaborationContext = createContext<
 interface CollaborationProviderProps {
   children: React.ReactNode;
   userId: string;
+  displayName: string;
 }
 
 export const CollaborationProvider: React.FC<CollaborationProviderProps> = ({
   children,
   userId,
+  displayName
 }) => {
   const [currentUser, setCurrentUser] = useState<AuthenticationSuccess | null>(null);
-  const [currentRoom, setCurrentRoom] = useState<Room | null>(null);
+  const [currentRoom, setCurrentRoom] = useState<RoomDetails | null>(null);
   const [users, setUsers] = useState<User[]>([]);
   const [cursors, setCursors] = useState<Record<string, CursorPosition>>({});
   const [error, setError] = useState<Error | null>(null);
+  const [loading, setLoading] = useState(false);
   
   // User display names cache
   const [userNamesCache, setUserNamesCache] = useState<Record<string, string>>({});
@@ -58,7 +65,7 @@ export const CollaborationProvider: React.FC<CollaborationProviderProps> = ({
     setCurrentUser(data);
     setUserNamesCache(prev => ({
       ...prev,
-      [data.userId]: data.displayName
+      [data.user_id]: data.display_name
     }));
   }, []);
 
@@ -77,26 +84,27 @@ export const CollaborationProvider: React.FC<CollaborationProviderProps> = ({
     updateCursor: wsUpdateCursor
   } = useWebSocket({
     userId,
+    displayName,
     onAuthSuccess: handleAuthSuccess,
     onAuthError: handleAuthError,
     onJoin: (event) => {
       setUsers(prev => [...prev, {
-        id: event.userId,
-        displayName: event.displayName,
-        joinedAt: new Date(event.timestamp).toISOString()
+        id: event.user_id,
+        display_name: event.display_name,
+        joined_at: new Date(event.timestamp).toISOString()
       }]);
       setUserNamesCache(prev => ({
         ...prev,
-        [event.userId]: event.displayName
+        [event.user_id]: event.display_name
       }));
     },
     onLeave: (event) => {
-      setUsers(prev => prev.filter(user => user.id !== event.userId));
+      setUsers(prev => prev.filter(user => user.id !== event.user_id));
     },
     onCursorMove: (event) => {
       setCursors(prev => ({
         ...prev,
-        [event.userId]: {
+        [event.user_id]: {
           position: event.location,
           timestamp: event.timestamp
         }
@@ -115,9 +123,13 @@ export const CollaborationProvider: React.FC<CollaborationProviderProps> = ({
   // Handle activities with pagination and caching
   const {
     activities,
-    addActivity,
+    loading: activitiesLoading,
+    hasMore: hasMoreActivities,
     loadMore: loadMoreActivities,
-    hasMore: hasMoreActivities
+    addActivity,
+    filterByType,
+    filterByUser,
+    getActivitySummary
   } = useActivity({
     roomId: currentRoom?.uuid || null,
     onError: setError
@@ -125,6 +137,7 @@ export const CollaborationProvider: React.FC<CollaborationProviderProps> = ({
 
   // Join room
   const joinRoom = async (roomId: string) => {
+    setLoading(true);
     try {
       const response = await fetch(`/api/maps/${roomId}`);
       const room = await response.json();
@@ -133,6 +146,8 @@ export const CollaborationProvider: React.FC<CollaborationProviderProps> = ({
     } catch (error) {
       setError(error as Error);
       throw error;
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -149,7 +164,7 @@ export const CollaborationProvider: React.FC<CollaborationProviderProps> = ({
   // Update cursor position
   const updateCursor = (position: Point) => {
     if (!currentRoom) return;
-    wsUpdateCursor(currentRoom.uuid, position.coordinates);
+    wsUpdateCursor(currentRoom.uuid, position);
   };
 
   // Get user display name from cache
@@ -165,10 +180,10 @@ export const CollaborationProvider: React.FC<CollaborationProviderProps> = ({
       addActivity(activity);
       
       // Update user name cache if needed
-      if (activity.userName && activity.userId) {
+      if (activity.user_name && activity.user_id) {
         setUserNamesCache(prev => ({
           ...prev,
-          [activity.userId]: activity.userName
+          [activity.user_id]: activity.user_name
         }));
       }
     });
@@ -187,11 +202,14 @@ export const CollaborationProvider: React.FC<CollaborationProviderProps> = ({
     users,
     cursors,
     activities,
+    hasMoreActivities,
+    loading: loading || activitiesLoading,
     error,
     joinRoom,
     leaveRoom,
     updateCursor,
-    getUserDisplayName
+    getUserDisplayName,
+    loadMoreActivities
   };
 
   return (

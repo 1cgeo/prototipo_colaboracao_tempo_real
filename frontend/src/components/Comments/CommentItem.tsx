@@ -55,13 +55,13 @@ const CommentItem: React.FC<CommentItemProps> = ({
             </Typography>
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
               <UserBadge
-                userId={comment.authorId}
-                displayName={getUserDisplayName(comment.authorId)}
+                userId={comment.author_id}
+                displayName={getUserDisplayName(comment.author_id)}
                 size="small"
                 abbreviated
               />
               <Typography variant="caption" color="textSecondary">
-                • {formatDistanceToNow(new Date(comment.createdAt))} ago
+                • {formatDistanceToNow(new Date(comment.created_at))} ago
               </Typography>
             </Box>
           </Box>

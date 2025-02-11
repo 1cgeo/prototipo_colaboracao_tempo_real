@@ -10,6 +10,30 @@ interface UserBadgeProps {
   abbreviated?: boolean;
 }
 
+interface SizeConfig {
+  avatarSize: number;
+  typographyVariant: 'caption' | 'body2' | 'body1';
+  spacing: number;
+}
+
+const sizeConfigs: Record<UserBadgeProps['size'], SizeConfig> = {
+  small: {
+    avatarSize: 24,
+    typographyVariant: 'caption',
+    spacing: 1
+  },
+  medium: {
+    avatarSize: 32,
+    typographyVariant: 'body2',
+    spacing: 1.5
+  },
+  large: {
+    avatarSize: 40,
+    typographyVariant: 'body1',
+    spacing: 2
+  }
+};
+
 const UserBadge: React.FC<UserBadgeProps> = ({
   userId,
   displayName,
@@ -19,25 +43,6 @@ const UserBadge: React.FC<UserBadgeProps> = ({
 }) => {
   // Generate consistent color based on userId
   const userColor = useMemo(() => stringToColor(userId), [userId]);
-
-  // Size configurations
-  const sizeConfigs = {
-    small: {
-      avatarSize: 24,
-      fontSize: 'caption',
-      spacing: 1
-    },
-    medium: {
-      avatarSize: 32,
-      fontSize: 'body2',
-      spacing: 1.5
-    },
-    large: {
-      avatarSize: 40,
-      fontSize: 'body1',
-      spacing: 2
-    }
-  };
 
   const config = sizeConfigs[size];
 
@@ -75,9 +80,9 @@ const UserBadge: React.FC<UserBadgeProps> = ({
         {initials}
       </Avatar>
       <Typography
-        variant={config.fontSize}
+        variant={config.typographyVariant}
         sx={{
-          fontFamily: 'system-ui, -apple-system, sans-serif', // Clear distinction between upper/lowercase
+          fontFamily: 'system-ui, -apple-system, sans-serif',
           whiteSpace: 'nowrap',
           color: 'text.primary'
         }}
