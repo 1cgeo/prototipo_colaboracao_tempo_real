@@ -16,6 +16,8 @@ import {
 } from '@mui/icons-material';
 import { Comment } from '../../types';
 import { formatDistanceToNow } from 'date-fns';
+import { UserBadge } from '../UserBadge';
+import { useCollaboration } from '../../contexts/CollaborationContext';
 
 interface CommentItemProps {
   comment: Comment;
@@ -24,7 +26,7 @@ interface CommentItemProps {
   onEdit?: () => void;
   onDelete?: () => void;
   onReply?: () => void;
-  onLocationClick?: () => void;
+  onLocationClick?: (event: React.MouseEvent) => void;
 }
 
 const CommentItem: React.FC<CommentItemProps> = ({
@@ -36,6 +38,8 @@ const CommentItem: React.FC<CommentItemProps> = ({
   onReply,
   onLocationClick
 }) => {
+  const { getUserDisplayName } = useCollaboration();
+
   const formatCoordinates = (coordinates: [number, number]) => {
     const [lng, lat] = coordinates;
     return `${lng.toFixed(6)}, ${lat.toFixed(6)}`;
@@ -46,12 +50,20 @@ const CommentItem: React.FC<CommentItemProps> = ({
       <CardContent>
         <Box sx={{ display: 'flex', alignItems: 'flex-start', mb: 1 }}>
           <Box sx={{ flexGrow: 1 }}>
-            <Typography variant="body1">
+            <Typography variant="body1" sx={{ mb: 1 }}>
               {comment.content}
             </Typography>
-            <Typography variant="caption" color="textSecondary">
-              By {comment.authorName} • {formatDistanceToNow(new Date(comment.createdAt))} ago
-            </Typography>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+              <UserBadge
+                userId={comment.authorId}
+                displayName={getUserDisplayName(comment.authorId)}
+                size="small"
+                abbreviated
+              />
+              <Typography variant="caption" color="textSecondary">
+                • {formatDistanceToNow(new Date(comment.createdAt))} ago
+              </Typography>
+            </Box>
           </Box>
           {showLocation && onLocationClick && (
             <Tooltip title={formatCoordinates(comment.location.coordinates)}>

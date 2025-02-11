@@ -149,6 +149,18 @@ const CommentLayer: React.FC = () => {
     }
   };
 
+  // Handler for comment edit
+  const handleUpdateComment = async (comment: Comment) => {
+    try {
+      await updateComment(comment.id, {
+        content: comment.content,
+        version: comment.version
+      });
+    } catch (error) {
+      console.error('Error updating comment:', error);
+    }
+  };
+
   // Render list of comments
   const renderCommentList = () => {
     if (!currentRoom) return null;
@@ -170,7 +182,7 @@ const CommentLayer: React.FC = () => {
           loading={loading}
           error={error}
           onSelectComment={(comment) => selectComment(comment.id)}
-          onEditComment={updateComment}
+          onEditComment={handleUpdateComment}
           onDeleteComment={(comment) => deleteComment(comment.id)}
           onReplyComment={(comment) => selectComment(comment.id)}
         />

@@ -2,7 +2,6 @@ import React from 'react';
 import {
   List,
   ListItem,
-  ListItemText,
   ListItemSecondaryAction,
   IconButton,
   Typography,
@@ -15,6 +14,8 @@ import {
 } from '@mui/icons-material';
 import { Reply } from '../../types';
 import { formatDistanceToNow } from 'date-fns';
+import { UserBadge } from '../UserBadge';
+import { useCollaboration } from '../../contexts/CollaborationContext';
 
 interface ReplyListProps {
   replies: Reply[];
@@ -27,6 +28,8 @@ const ReplyList: React.FC<ReplyListProps> = ({
   onEditReply,
   onDeleteReply
 }) => {
+  const { getUserDisplayName } = useCollaboration();
+
   if (replies.length === 0) {
     return (
       <Typography color="textSecondary" variant="body2" sx={{ mt: 2, mb: 1 }}>
@@ -53,21 +56,22 @@ const ReplyList: React.FC<ReplyListProps> = ({
               }
             }}
           >
-            <ListItemText
-              primary={reply.content}
-              secondary={
-                <>
-                  By {reply.authorName} •{' '}
-                  {formatDistanceToNow(new Date(reply.createdAt))} ago
-                </>
-              }
-              primaryTypographyProps={{
-                variant: 'body2'
-              }}
-              secondaryTypographyProps={{
-                variant: 'caption'
-              }}
-            />
+            <Box sx={{ flex: 1 }}>
+              <Typography variant="body2" sx={{ mb: 0.5 }}>
+                {reply.content}
+              </Typography>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                <UserBadge
+                  userId={reply.authorId}
+                  displayName={getUserDisplayName(reply.authorId)}
+                  size="small"
+                  abbreviated
+                />
+                <Typography variant="caption" color="text.secondary">
+                  • {formatDistanceToNow(new Date(reply.createdAt))} ago
+                </Typography>
+              </Box>
+            </Box>
             <ListItemSecondaryAction>
               <IconButton
                 edge="end"

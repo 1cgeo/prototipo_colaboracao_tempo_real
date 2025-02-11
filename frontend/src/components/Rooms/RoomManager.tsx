@@ -3,29 +3,19 @@ import {
   Box,
   Paper,
   Typography,
-  Button,
-  CircularProgress,
-  List,
-  ListItem,
-  ListItemText,
-  ListItemSecondaryAction,
-  IconButton,
-  Chip,
-  ButtonBase
+  Button
 } from '@mui/material';
 import {
-  Add as AddIcon,
-  Edit as EditIcon,
-  Delete as DeleteIcon,
-  People as PeopleIcon
+  Add as AddIcon
 } from '@mui/icons-material';
 import { Room, RoomCreateInput, RoomUpdateInput } from '../../types';
 import { useCollaboration } from '../../contexts/CollaborationContext';
+import RoomList from './RoomList';
 import RoomCreate from './RoomCreate';
 import RoomUpdate from './RoomUpdate';
 
 const RoomManager: React.FC = () => {
-  const { currentRoom, joinRoom } = useCollaboration();
+  const { joinRoom } = useCollaboration();
   const [rooms, setRooms] = useState<Room[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<Error | null>(null);
@@ -34,6 +24,26 @@ const RoomManager: React.FC = () => {
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [updateDialogOpen, setUpdateDialogOpen] = useState(false);
   const [selectedRoom, setSelectedRoom] = useState<Room | null>(null);
+
+  // Load rooms
+  const loadRooms = useCallback(async () => {
+    setLoading(true);
+    try {
+      const response = await fetch('/api/maps');
+      const rooms = await response.json();
+      setRooms(rooms);
+      setError(null);
+    } catch (err) {
+      setError(err as Error);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  // First load
+  React.useEffect(() => {
+    loadRooms();
+  }, [loadRooms]);
 
   // Handle room creation
   const handleCreateRoom = async (input: RoomCreateInput) => {
@@ -97,21 +107,6 @@ const RoomManager: React.FC = () => {
     }
   };
 
-  // Load rooms
-  const loadRooms = useCallback(async () => {
-    setLoading(true);
-    try {
-      const response = await fetch('/api/maps');
-      const rooms = await response.json();
-      setRooms(rooms);
-      setError(null);
-    } catch (err) {
-      setError(err as Error);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
   // Handle room join
   const handleJoinRoom = async (room: Room) => {
     try {
@@ -120,14 +115,6 @@ const RoomManager: React.FC = () => {
       setError(err as Error);
     }
   };
-
-  if (loading && !rooms.length) {
-    return (
-      <Box sx={{ display: 'flex', justifyContent: 'center', p: 3 }}>
-        <CircularProgress />
-      </Box>
-    );
-  }
 
   return (
     <Paper sx={{ p: 3 }}>
@@ -150,61 +137,17 @@ const RoomManager: React.FC = () => {
         </Typography>
       )}
 
-      <List>
-        {rooms.map((room) => (
-          <Box key={room.uuid}>
-            <ButtonBase
-              onClick={() => handleJoinRoom(room)}
-              sx={{ width: '100%', textAlign: 'left' }}
-            >
-              <ListItem
-                sx={{
-                  mb: 1,
-                  width: '100%',
-                  '&:hover': {
-                    backgroundColor: 'rgba(0, 0, 0, 0.04)'
-                  }
-                }}
-              >
-                <ListItemText
-                  primary={room.name}
-                  secondary={room.description}
-                />
-                <ListItemSecondaryAction>
-                  <Chip
-                    icon={<PeopleIcon />}
-                    label={`${room.activeUsers} online`}
-                    size="small"
-                    sx={{ mr: 1 }}
-                  />
-                  <IconButton
-                    edge="end"
-                    aria-label="edit"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setSelectedRoom(room);
-                      setUpdateDialogOpen(true);
-                    }}
-                    sx={{ mr: 1 }}
-                  >
-                    <EditIcon />
-                  </IconButton>
-                  <IconButton
-                    edge="end"
-                    aria-label="delete"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleDeleteRoom(room.uuid);
-                    }}
-                  >
-                    <DeleteIcon />
-                  </IconButton>
-                </ListItemSecondaryAction>
-              </ListItem>
-            </ButtonBase>
-          </Box>
-        ))}
-      </List>
+      <RoomList
+        rooms={rooms}
+        loading={loading}
+        error={error}
+        onJoinRoom={handleJoinRoom}
+        onEditRoom={(room) => {
+          setSelectedRoom(room);
+          setUpdateDialogOpen(true);
+        }}
+        onDeleteRoom={(room) => handleDeleteRoom(room.uuid)}
+      />
 
       <RoomCreate
         open={createDialogOpen}

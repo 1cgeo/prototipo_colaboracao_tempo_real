@@ -30,6 +30,38 @@ export interface RoomUpdateInput {
   description?: string;
 }
 
+// Authentication Types
+export interface AuthenticationSuccess {
+  userId: string;
+  displayName: string;
+}
+
+export interface AuthenticationError {
+  message: string;
+  code: string;
+}
+
+// WebSocket Event Types
+export interface WebSocketEvent {
+  timestamp: number;
+  roomId: string;
+  userId: string;
+}
+
+export interface RoomJoinEvent extends WebSocketEvent {
+  displayName: string;
+}
+
+export interface RoomLeaveEvent extends WebSocketEvent {
+  timestamp: number;
+  roomId: string;
+  userId: string;
+}
+
+export interface CursorMoveEvent extends WebSocketEvent {
+  location: Point;
+}
+
 // Comment Types
 export interface Comment {
   id: string;
@@ -76,7 +108,7 @@ export interface ReplyUpdateInput {
 // Activity Types
 export interface Activity {
   id: string;
-  type: string;
+  type: ActivityType;
   userId: string;
   userName: string;
   metadata: {
@@ -89,26 +121,15 @@ export interface Activity {
   timestamp: string;
 }
 
-// WebSocket Event Types
-export interface RoomJoinEvent {
-  timestamp: number;
-  roomId: string;
-  userId: string;
-  displayName: string;
-}
-
-export interface RoomLeaveEvent {
-  timestamp: number;
-  roomId: string;
-  userId: string;
-}
-
-export interface CursorMoveEvent {
-  timestamp: number;
-  roomId: string;
-  userId: string;
-  location: Point;
-}
+export type ActivityType = 
+  | 'ROOM_JOIN'
+  | 'ROOM_LEAVE'
+  | 'COMMENT_CREATE'
+  | 'COMMENT_UPDATE'
+  | 'COMMENT_DELETE'
+  | 'REPLY_CREATE'
+  | 'REPLY_UPDATE'
+  | 'REPLY_DELETE';
 
 // API Error Types
 export interface APIError {

@@ -8,9 +8,11 @@ interface UseActivityOptions {
   onError?: (error: Error) => void;
 }
 
+const DEFAULT_LIMIT = 50;
+
 const useActivity = ({ 
   roomId, 
-  limit = 50,
+  limit = DEFAULT_LIMIT,
   onError 
 }: UseActivityOptions) => {
   const [activities, setActivities] = useState<Activity[]>([]);
@@ -25,17 +27,21 @@ const useActivity = ({
 
     setLoading(true);
     try {
-      // Se reset é true, limpa o estado antes de carregar
+      // If reset is true, clear the state before loading
       if (reset) {
         setActivities([]);
         setLastTimestamp(null);
         setHasMore(false);
       }
 
-      const response = await activityApi.getLog(roomId);
+      const response = await activityApi.getLog(roomId, { limit });
       setActivities(response);
       setHasMore(response.length >= limit);
-      setLastTimestamp(response[response.length - 1]?.timestamp || null);
+      
+      if (response.length > 0) {
+        setLastTimestamp(response[response.length - 1].timestamp);
+      }
+      
       setError(null);
     } catch (error) {
       const err = error as Error;
@@ -52,7 +58,11 @@ const useActivity = ({
 
     setLoading(true);
     try {
-      const response = await activityApi.getLog(roomId, lastTimestamp);
+      const response = await activityApi.getLog(roomId, {
+        before: lastTimestamp,
+        limit
+      });
+
       if (response.length > 0) {
         setActivities(prev => [...prev, ...response]);
         setHasMore(response.length >= limit);
@@ -60,6 +70,7 @@ const useActivity = ({
       } else {
         setHasMore(false);
       }
+      
       setError(null);
     } catch (error) {
       const err = error as Error;
@@ -83,8 +94,25 @@ const useActivity = ({
 
   // Add new activity to the list
   const addActivity = useCallback((activity: Activity) => {
-    setActivities(prev => [activity, ...prev].slice(0, limit));
+    setActivities(prev => {
+      const newActivities = [activity, ...prev];
+      // Keep only the latest activities based on limit
+      return newActivities.slice(0, limit);
+    });
   }, [limit]);
+
+  // Update user names in existing activities
+  const updateUserNames = useCallback((userId: string, newName: string) => {
+    setActivities(prev => prev.map(activity => {
+      if (activity.userId === userId) {
+        return {
+          ...activity,
+          userName: newName
+        };
+      }
+      return activity;
+    }));
+  }, []);
 
   // Get user activities
   const getUserActivities = useCallback(async (userId: string) => {
@@ -118,6 +146,7 @@ const useActivity = ({
     loadActivities,
     loadMore,
     addActivity,
+    updateUserNames,
     getUserActivities,
     filterActivitiesByType,
     filterActivitiesByUser

@@ -4,18 +4,13 @@ import {
   CardContent,
   Typography,
   IconButton,
-  Button,
-  TextField,
-  Divider,
   Box,
-  List,
-  ListItem,
-  ListItemText,
-  ListItemSecondaryAction,
   Dialog,
   DialogTitle,
   DialogContent,
   DialogActions,
+  Button,
+  TextField,
   CircularProgress
 } from '@mui/material';
 import {
@@ -28,6 +23,8 @@ import { formatDistanceToNow } from 'date-fns';
 import { Comment } from '../../types';
 import { useCollaboration } from '../../contexts/CollaborationContext';
 import { commentApi, replyApi } from '../../utils/api';
+import { ReplyList, ReplyCreate } from '../Comments';
+import { UserBadge } from '../UserBadge';
 
 interface CommentDetailProps {
   comment: Comment;
@@ -35,13 +32,12 @@ interface CommentDetailProps {
 }
 
 interface DialogState {
-  type: 'edit-comment' | 'edit-reply' | 'reply';
+  type: 'edit-comment' | 'reply';
   open: boolean;
-  replyId?: string;
 }
 
 const CommentDetail: React.FC<CommentDetailProps> = ({ comment, onClose }) => {
-  const { currentRoom } = useCollaboration();
+  const { currentRoom, getUserDisplayName } = useCollaboration();
   const [dialogState, setDialogState] = useState<DialogState>({
     type: 'reply',
     open: false
@@ -85,45 +81,41 @@ const CommentDetail: React.FC<CommentDetailProps> = ({ comment, onClose }) => {
   };
 
   // Handle reply create
-  const handleCreateReply = async () => {
+  const handleReplyCreate = async (content: string) => {
     if (!currentRoom) return;
     setLoading(true);
 
     try {
       await replyApi.create(currentRoom.uuid, comment.id, { content });
       setDialogState({ type: 'reply', open: false });
-      setContent('');
     } catch (error) {
       setError(error as Error);
+      throw error;
     } finally {
       setLoading(false);
     }
   };
 
-  // Handle reply edit
-  const handleEditReply = async () => {
-    if (!currentRoom || !dialogState.replyId) return;
+  // Handle reply update
+  const handleReplyUpdate = async (replyId: string, content: string, version: number) => {
+    if (!currentRoom) return;
     setLoading(true);
 
     try {
-      const reply = comment.replies.find(r => r.id === dialogState.replyId);
-      if (!reply) return;
-
-      await replyApi.update(currentRoom.uuid, comment.id, reply.id, {
+      await replyApi.update(currentRoom.uuid, comment.id, replyId, {
         content,
-        version: reply.version
+        version
       });
-      setDialogState({ type: 'reply', open: false });
-      setContent('');
     } catch (error) {
       setError(error as Error);
+      throw error;
     } finally {
       setLoading(false);
     }
   };
 
   // Handle reply delete
-  const handleDeleteReply = async (replyId: string) => {
+  const handleReplyDelete = async (replyId: string) => {
     if (!currentRoom) return;
     setLoading(true);
 
@@ -133,28 +125,6 @@ const CommentDetail: React.FC<CommentDetailProps> = ({ comment, onClose }) => {
       setError(error as Error);
     } finally {
       setLoading(false);
-    }
-  };
-
-  // Handle dialog close
-  const handleDialogClose = () => {
-    setDialogState({ type: 'reply', open: false });
-    setContent('');
-    setError(null);
-  };
-
-  // Handle dialog submit
-  const handleDialogSubmit = async () => {
-    switch (dialogState.type) {
-      case 'edit-comment':
-        await handleEditComment();
-        break;
-      case 'edit-reply':
-        await handleEditReply();
-        break;
-      case 'reply':
-        await handleCreateReply();
-        break;
     }
   };
 
@@ -183,9 +153,16 @@ const CommentDetail: React.FC<CommentDetailProps> = ({ comment, onClose }) => {
         <Typography variant="body1" gutterBottom>
           {comment.content}
         </Typography>
-        <Typography variant="caption" color="text.secondary">
-          By {comment.authorName} • {formatDistanceToNow(new Date(comment.createdAt))} ago
-        </Typography>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
+          <UserBadge
+            userId={comment.authorId}
+            displayName={getUserDisplayName(comment.authorId)}
+            size="small"
+          />
+          <Typography variant="caption" color="text.secondary">
+            • {formatDistanceToNow(new Date(comment.createdAt))} ago
+          </Typography>
+        </Box>
 
         {/* Comment Actions */}
         <Box sx={{ mt: 2 }}>
@@ -207,7 +184,6 @@ const CommentDetail: React.FC<CommentDetailProps> = ({ comment, onClose }) => {
           <IconButton
             size="small"
             onClick={() => {
-              setContent('');
               setDialogState({ type: 'reply', open: true });
             }}
           >
@@ -216,53 +192,11 @@ const CommentDetail: React.FC<CommentDetailProps> = ({ comment, onClose }) => {
         </Box>
 
         {/* Replies Section */}
-        {comment.replies.length > 0 && (
-          <>
-            <Divider sx={{ my: 2 }} />
-            <Typography variant="subtitle2" gutterBottom>
-              Replies
-            </Typography>
-            <List>
-              {comment.replies.map((reply) => (
-                <ListItem key={reply.id}>
-                  <ListItemText
-                    primary={reply.content}
-                    secondary={
-                      <>
-                        By {reply.authorName} •{' '}
-                        {formatDistanceToNow(new Date(reply.createdAt))} ago
-                      </>
-                    }
-                  />
-                  <ListItemSecondaryAction>
-                    <IconButton
-                      edge="end"
-                      size="small"
-                      onClick={() => {
-                        setContent(reply.content);
-                        setDialogState({
-                          type: 'edit-reply',
-                          open: true,
-                          replyId: reply.id
-                        });
-                      }}
-                      sx={{ mr: 1 }}
-                    >
-                      <EditIcon />
-                    </IconButton>
-                    <IconButton
-                      edge="end"
-                      size="small"
-                      onClick={() => handleDeleteReply(reply.id)}
-                    >
-                      <DeleteIcon />
-                    </IconButton>
-                  </ListItemSecondaryAction>
-                </ListItem>
-              ))}
-            </List>
-          </>
-        )}
+        <ReplyList
+          replies={comment.replies}
+          onEditReply={(reply) => handleReplyUpdate(reply.id, reply.content, reply.version)}
+          onDeleteReply={(reply) => handleReplyDelete(reply.id)}
+        />
 
         {/* Error Display */}
         {error && (
@@ -272,18 +206,14 @@ const CommentDetail: React.FC<CommentDetailProps> = ({ comment, onClose }) => {
         )}
       </CardContent>
 
-      {/* Dialog for Edit/Reply */}
+      {/* Edit Comment Dialog */}
       <Dialog
-        open={dialogState.open}
-        onClose={handleDialogClose}
+        open={dialogState.type === 'edit-comment' && dialogState.open}
+        onClose={() => setDialogState({ type: 'reply', open: false })}
         maxWidth="sm"
         fullWidth
       >
-        <DialogTitle>
-          {dialogState.type === 'edit-comment' ? 'Edit Comment' :
-           dialogState.type === 'edit-reply' ? 'Edit Reply' :
-           'Add Reply'}
-        </DialogTitle>
+        <DialogTitle>Edit Comment</DialogTitle>
         <DialogContent>
           <TextField
             autoFocus
@@ -297,31 +227,33 @@ const CommentDetail: React.FC<CommentDetailProps> = ({ comment, onClose }) => {
             onChange={(e) => setContent(e.target.value)}
             disabled={loading}
           />
-          {error && (
-            <Typography color="error" sx={{ mt: 1 }}>
-              Error: {error.message}
-            </Typography>
-          )}
         </DialogContent>
         <DialogActions>
-          <Button onClick={handleDialogClose} disabled={loading}>
+          <Button 
+            onClick={() => setDialogState({ type: 'reply', open: false })}
+            disabled={loading}
+          >
             Cancel
           </Button>
           <Button
-            onClick={handleDialogSubmit}
+            onClick={handleEditComment}
             variant="contained"
             disabled={loading || !content.trim()}
           >
-            {loading ? (
-              <CircularProgress size={24} />
-            ) : (
-              dialogState.type === 'edit-comment' ? 'Update Comment' :
-              dialogState.type === 'edit-reply' ? 'Update Reply' :
-              'Add Reply'
-            )}
+            {loading ? <CircularProgress size={24} /> : 'Update'}
           </Button>
         </DialogActions>
       </Dialog>
+
+      {/* Reply Create Dialog */}
+      <ReplyCreate
+        open={dialogState.type === 'reply' && dialogState.open}
+        loading={loading}
+        error={error}
+        comment={comment}
+        onClose={() => setDialogState({ type: 'reply', open: false })}
+        onSubmit={({ content }) => handleReplyCreate(content)}
+      />
     </Card>
   );
 };

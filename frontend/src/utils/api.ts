@@ -11,28 +11,75 @@ const WS_CONFIG = {
   path: '/socket.io',
   pingTimeout: 10000,
   pingInterval: 3000,
+  reconnection: true,
+  reconnectionAttempts: 5,
+  reconnectionDelay: 1000,
 };
+
+interface AuthSuccessData {
+  userId: string;
+  displayName: string;
+}
 
 let socket: Socket | null = null;
 
-export const initializeSocket = (userId: string, displayName: string) => {
-  if (socket) return socket;
+// Validate display name format from backend
+function isValidDisplayName(name: string): boolean {
+  return /^[A-Z][a-z]+ [A-Z][a-z]+$/.test(name);
+}
 
-  socket = io({
-    ...WS_CONFIG,
-    auth: {
-      userId,
-      displayName,
-    },
+export const initializeSocket = (userId: string): Promise<AuthSuccessData> => {
+  return new Promise((resolve, reject) => {
+    if (socket?.connected) {
+      const stored = localStorage.getItem('currentUser');
+      if (stored) {
+        const userData = JSON.parse(stored);
+        return resolve(userData);
+      }
+    }
+
+    socket = io({
+      ...WS_CONFIG,
+      auth: { userId }
+    });
+
+    // Handle successful authentication
+    socket.on('authentication:success', (data: AuthSuccessData) => {
+      if (!isValidDisplayName(data.displayName)) {
+        console.error('Invalid display name received:', data.displayName);
+        reject(new Error('Invalid display name format'));
+        return;
+      }
+
+      // Store user data in localStorage
+      localStorage.setItem('currentUser', JSON.stringify(data));
+      resolve(data);
+    });
+
+    // Handle authentication errors
+    socket.on('authentication:error', (error: Error) => {
+      reject(error);
+    });
+
+    // Handle disconnection
+    socket.on('disconnect', () => {
+      // Clear stored user data on disconnect
+      localStorage.removeItem('currentUser');
+    });
+
+    // Handle reconnection
+    socket.on('reconnect', () => {
+      // Will trigger authentication:success again
+      console.log('Socket reconnected, awaiting new authentication');
+    });
   });
-
-  return socket;
 };
 
 export const disconnectSocket = () => {
   if (socket) {
     socket.disconnect();
     socket = null;
+    localStorage.removeItem('currentUser');
   }
 };
 
@@ -149,11 +196,12 @@ export const replyApi = {
   },
 };
 
-// Activity API
+// Activity API with pagination
 export const activityApi = {
-  getLog: async (roomId: string, before?: string): Promise<Activity[]> => {
+  getLog: async (roomId: string, params: { before?: string, limit?: number } = {}): Promise<Activity[]> => {
     const url = new URL(API_ROUTES.getActivityLog(roomId), window.location.origin);
-    if (before) url.searchParams.append('before', before);
+    if (params.before) url.searchParams.append('before', params.before);
+    if (params.limit) url.searchParams.append('limit', params.limit.toString());
     const response = await fetch(url.toString());
     return handleResponse(response);
   },

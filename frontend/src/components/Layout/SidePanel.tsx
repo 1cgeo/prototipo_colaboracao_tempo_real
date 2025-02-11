@@ -8,12 +8,10 @@ import {
   ListItemText,
   Typography,
   Divider,
-  ListItemAvatar,
-  Avatar,
+  Button,
   CircularProgress
 } from '@mui/material';
 import {
-  Person as PersonIcon,
   Edit as EditIcon,
   Delete as DeleteIcon,
   Comment as CommentIcon,
@@ -22,11 +20,12 @@ import {
 import { useCollaboration } from '../../contexts/CollaborationContext';
 import { formatDistanceToNow } from 'date-fns';
 import { useActivity } from '../../hooks';
+import { UserBadge } from '../UserBadge';
 
 const DRAWER_WIDTH = 300;
 
 const SidePanel: React.FC = () => {
-  const { currentRoom, users } = useCollaboration();
+  const { currentRoom, users, getUserDisplayName } = useCollaboration();
 
   const {
     activities,
@@ -34,7 +33,8 @@ const SidePanel: React.FC = () => {
     hasMore,
     loadMore
   } = useActivity({
-    roomId: currentRoom?.uuid || null
+    roomId: currentRoom?.uuid || null,
+    limit: 50
   });
 
   const getActivityIcon = (type: string) => {
@@ -51,11 +51,8 @@ const SidePanel: React.FC = () => {
         return <EditIcon />;
       case 'REPLY_DELETE':
         return <DeleteIcon />;
-      case 'ROOM_JOIN':
-      case 'ROOM_LEAVE':
-        return <PersonIcon />;
       default:
-        return <PersonIcon />;
+        return null;
     }
   };
 
@@ -100,19 +97,16 @@ const SidePanel: React.FC = () => {
       {/* Active Users Section */}
       <Box sx={{ p: 2 }}>
         <Typography variant="h6" gutterBottom>
-          Active Users
+          Active Users ({users.length})
         </Typography>
         <List>
           {users.map((user) => (
             <ListItem key={user.id}>
-              <ListItemAvatar>
-                <Avatar>
-                  <PersonIcon />
-                </Avatar>
-              </ListItemAvatar>
-              <ListItemText
-                primary={user.displayName}
-                secondary={`Joined ${formatDistanceToNow(new Date(user.joinedAt))} ago`}
+              <UserBadge
+                userId={user.id}
+                displayName={user.displayName}
+                size="medium"
+                showTooltip={false}
               />
             </ListItem>
           ))}
@@ -126,7 +120,7 @@ const SidePanel: React.FC = () => {
         <Typography variant="h6" gutterBottom>
           Activity Log
         </Typography>
-        {loading ? (
+        {loading && !activities.length ? (
           <Box sx={{ display: 'flex', justifyContent: 'center', my: 2 }}>
             <CircularProgress />
           </Box>
@@ -138,7 +132,14 @@ const SidePanel: React.FC = () => {
                   {getActivityIcon(activity.type)}
                 </ListItemIcon>
                 <ListItemText
-                  primary={activity.userName}
+                  primary={
+                    <UserBadge
+                      userId={activity.userId}
+                      displayName={getUserDisplayName(activity.userId)}
+                      size="small"
+                      abbreviated
+                    />
+                  }
                   secondary={
                     <>
                       {getActivityText(activity)}
@@ -150,16 +151,16 @@ const SidePanel: React.FC = () => {
               </ListItem>
             ))}
             {hasMore && (
-              <ListItem 
-                component="li"
-                onClick={loadMore} 
-                disabled={loading}
-                sx={{ justifyContent: 'center' }}
-              >
-                <Typography color="primary">
+              <Box sx={{ display: 'flex', justifyContent: 'center', mt: 2 }}>
+                <Button
+                  onClick={loadMore}
+                  disabled={loading}
+                  variant="text"
+                  color="primary"
+                >
                   {loading ? 'Loading...' : 'Load More'}
-                </Typography>
-              </ListItem>
+                </Button>
+              </Box>
             )}
           </List>
         )}

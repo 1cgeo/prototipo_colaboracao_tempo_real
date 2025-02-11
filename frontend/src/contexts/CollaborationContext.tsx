@@ -1,11 +1,10 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useCallback } from 'react';
 import { Socket } from 'socket.io-client';
 import { 
   Room, User, Point, Activity,
-  RoomJoinEvent, RoomLeaveEvent, CursorMoveEvent
+  AuthenticationSuccess, AuthenticationError
 } from '../types';
 import { useWebSocket, useActivity } from '../hooks';
-import { roomApi } from '../utils/api';
 
 interface CursorPosition {
   position: Point;
@@ -15,6 +14,8 @@ interface CursorPosition {
 interface CollaborationContextState {
   socket: Socket | null;
   connected: boolean;
+  authenticating: boolean;
+  currentUser: AuthenticationSuccess | null;
   currentRoom: Room | null;
   users: User[];
   cursors: Record<string, CursorPosition>;
@@ -26,6 +27,7 @@ interface CollaborationContextActions {
   joinRoom: (roomId: string) => Promise<void>;
   leaveRoom: () => void;
   updateCursor: (position: Point) => void;
+  getUserDisplayName: (userId: string) => string;
 }
 
 const CollaborationContext = createContext<
@@ -36,46 +38,62 @@ const CollaborationContext = createContext<
 interface CollaborationProviderProps {
   children: React.ReactNode;
   userId: string;
-  displayName: string;
 }
 
 export const CollaborationProvider: React.FC<CollaborationProviderProps> = ({
   children,
   userId,
-  displayName,
 }) => {
+  const [currentUser, setCurrentUser] = useState<AuthenticationSuccess | null>(null);
   const [currentRoom, setCurrentRoom] = useState<Room | null>(null);
   const [users, setUsers] = useState<User[]>([]);
   const [cursors, setCursors] = useState<Record<string, CursorPosition>>({});
   const [error, setError] = useState<Error | null>(null);
+  
+  // User display names cache
+  const [userNamesCache, setUserNamesCache] = useState<Record<string, string>>({});
 
-  // Initialize WebSocket with room event handlers
+  // Handle successful authentication
+  const handleAuthSuccess = useCallback((data: AuthenticationSuccess) => {
+    setCurrentUser(data);
+    setUserNamesCache(prev => ({
+      ...prev,
+      [data.userId]: data.displayName
+    }));
+  }, []);
+
+  // Handle authentication error
+  const handleAuthError = useCallback((error: AuthenticationError) => {
+    setError(new Error(error.message));
+  }, []);
+
+  // Initialize WebSocket with all handlers
   const {
     socket,
     connected,
+    authenticating,
     joinRoom: wsJoinRoom,
     leaveRoom: wsLeaveRoom,
     updateCursor: wsUpdateCursor
   } = useWebSocket({
     userId,
-    displayName,
-    onError: setError,
-    onJoin: (event: RoomJoinEvent) => {
+    onAuthSuccess: handleAuthSuccess,
+    onAuthError: handleAuthError,
+    onJoin: (event) => {
       setUsers(prev => [...prev, {
         id: event.userId,
         displayName: event.displayName,
         joinedAt: new Date(event.timestamp).toISOString()
       }]);
+      setUserNamesCache(prev => ({
+        ...prev,
+        [event.userId]: event.displayName
+      }));
     },
-    onLeave: (event: RoomLeaveEvent) => {
+    onLeave: (event) => {
       setUsers(prev => prev.filter(user => user.id !== event.userId));
-      setCursors(prev => {
-        const next = { ...prev };
-        delete next[event.userId];
-        return next;
-      });
     },
-    onCursorMove: (event: CursorMoveEvent) => {
+    onCursorMove: (event) => {
       setCursors(prev => ({
         ...prev,
         [event.userId]: {
@@ -83,38 +101,35 @@ export const CollaborationProvider: React.FC<CollaborationProviderProps> = ({
           timestamp: event.timestamp
         }
       }));
+    },
+    onError: setError,
+    onReconnect: () => {
+      // Clear local state on reconnect
+      setCursors({});
+      if (currentRoom) {
+        wsJoinRoom(currentRoom.uuid);
+      }
     }
   });
 
-  // Handle activities
-  const { activities, addActivity } = useActivity({
+  // Handle activities with pagination and caching
+  const {
+    activities,
+    addActivity,
+    loadMore: loadMoreActivities,
+    hasMore: hasMoreActivities
+  } = useActivity({
     roomId: currentRoom?.uuid || null,
     onError: setError
   });
 
-  useEffect(() => {
-    if (!socket) return;
-
-    socket.on('activity', addActivity);
-
-    return () => {
-      socket.off('activity', addActivity);
-    };
-  }, [socket, addActivity]);
-
   // Join room
   const joinRoom = async (roomId: string) => {
-    if (!socket || !connected) {
-      throw new Error('Socket not connected');
-    }
-
     try {
-      const room = await roomApi.get(roomId);
-      
-      wsJoinRoom(roomId);
+      const response = await fetch(`/api/maps/${roomId}`);
+      const room = await response.json();
       setCurrentRoom(room);
-      setCursors({});
-
+      wsJoinRoom(roomId);
     } catch (error) {
       setError(error as Error);
       throw error;
@@ -123,12 +138,12 @@ export const CollaborationProvider: React.FC<CollaborationProviderProps> = ({
 
   // Leave room
   const leaveRoom = () => {
-    if (!socket || !currentRoom) return;
-
-    wsLeaveRoom(currentRoom.uuid);
-    setCurrentRoom(null);
-    setUsers([]);
-    setCursors({});
+    if (currentRoom) {
+      wsLeaveRoom(currentRoom.uuid);
+      setCurrentRoom(null);
+      setUsers([]);
+      setCursors({});
+    }
   };
 
   // Update cursor position
@@ -137,9 +152,37 @@ export const CollaborationProvider: React.FC<CollaborationProviderProps> = ({
     wsUpdateCursor(currentRoom.uuid, position.coordinates);
   };
 
+  // Get user display name from cache
+  const getUserDisplayName = (userId: string): string => {
+    return userNamesCache[userId] || 'Unknown User';
+  };
+
+  // Socket event handler for activities
+  React.useEffect(() => {
+    if (!socket) return;
+
+    socket.on('activity', (activity: Activity) => {
+      addActivity(activity);
+      
+      // Update user name cache if needed
+      if (activity.userName && activity.userId) {
+        setUserNamesCache(prev => ({
+          ...prev,
+          [activity.userId]: activity.userName
+        }));
+      }
+    });
+
+    return () => {
+      socket.off('activity');
+    };
+  }, [socket, addActivity]);
+
   const value: CollaborationContextState & CollaborationContextActions = {
     socket,
     connected,
+    authenticating,
+    currentUser,
     currentRoom,
     users,
     cursors,
@@ -147,7 +190,8 @@ export const CollaborationProvider: React.FC<CollaborationProviderProps> = ({
     error,
     joinRoom,
     leaveRoom,
-    updateCursor
+    updateCursor,
+    getUserDisplayName
   };
 
   return (

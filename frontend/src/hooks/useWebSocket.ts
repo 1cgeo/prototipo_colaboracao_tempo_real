@@ -1,39 +1,90 @@
 import { useEffect, useState, useCallback } from 'react';
 import { Socket } from 'socket.io-client';
 import { initializeSocket, disconnectSocket } from '../utils/api';
-import { RoomJoinEvent, RoomLeaveEvent, CursorMoveEvent } from '../types';
+import { 
+  RoomJoinEvent, 
+  RoomLeaveEvent, 
+  CursorMoveEvent,
+  AuthenticationSuccess,
+  AuthenticationError
+} from '../types';
 
 interface UseWebSocketOptions {
   userId: string;
-  displayName: string;
+  onAuthSuccess?: (data: AuthenticationSuccess) => void;
+  onAuthError?: (error: AuthenticationError) => void;
   onJoin?: (event: RoomJoinEvent) => void;
   onLeave?: (event: RoomLeaveEvent) => void;
   onCursorMove?: (event: CursorMoveEvent) => void;
   onError?: (error: Error) => void;
+  onReconnect?: () => void;
 }
 
 const useWebSocket = ({
   userId,
-  displayName,
+  onAuthSuccess,
+  onAuthError,
   onJoin,
   onLeave,
   onCursorMove,
-  onError
+  onError,
+  onReconnect
 }: UseWebSocketOptions) => {
   const [socket, setSocket] = useState<Socket | null>(null);
   const [connected, setConnected] = useState(false);
+  const [authenticating, setAuthenticating] = useState(false);
 
   // Initialize socket connection
   useEffect(() => {
-    const socket = initializeSocket(userId, displayName);
-    
+    let mounted = true;
+    setAuthenticating(true);
+
+    const connectSocket = async () => {
+      try {
+        const authData = await initializeSocket(userId);
+        if (!mounted) return;
+
+        const socket = window.io;
+        if (socket) {
+          setSocket(socket);
+          setConnected(true);
+          onAuthSuccess?.(authData);
+        }
+      } catch (error) {
+        if (!mounted) return;
+        setConnected(false);
+        onAuthError?.(error as AuthenticationError);
+        onError?.(error as Error);
+      } finally {
+        if (mounted) {
+          setAuthenticating(false);
+        }
+      }
+    };
+
+    connectSocket();
+
+    return () => {
+      mounted = false;
+      disconnectSocket();
+    };
+  }, [userId, onAuthSuccess, onAuthError, onError]);
+
+  // Setup socket event listeners
+  useEffect(() => {
+    if (!socket) return;
+
+    // Connection events
     socket.on('connect', () => {
-      setSocket(socket);
       setConnected(true);
     });
 
     socket.on('disconnect', () => {
       setConnected(false);
+    });
+
+    socket.on('reconnect', () => {
+      onReconnect?.();
     });
 
     socket.on('error', (error: Error) => {
@@ -54,9 +105,15 @@ const useWebSocket = ({
     });
 
     return () => {
-      disconnectSocket();
+      socket.off('connect');
+      socket.off('disconnect');
+      socket.off('reconnect');
+      socket.off('error');
+      socket.off('room:join');
+      socket.off('room:leave');
+      socket.off('cursor:move');
     };
-  }, [userId, displayName, onJoin, onLeave, onCursorMove, onError]);
+  }, [socket, onJoin, onLeave, onCursorMove, onError, onReconnect]);
 
   // Emit room join event
   const joinRoom = useCallback((roomId: string) => {
@@ -67,10 +124,9 @@ const useWebSocket = ({
     socket.emit('room:join', {
       roomId,
       userId,
-      displayName,
       timestamp: Date.now()
     });
-  }, [socket, connected, userId, displayName]);
+  }, [socket, connected, userId]);
 
   // Emit room leave event
   const leaveRoom = useCallback((roomId: string) => {
@@ -83,7 +139,7 @@ const useWebSocket = ({
     });
   }, [socket, connected, userId]);
 
-  // Emit cursor move event
+  // Emit cursor move event with throttling
   const updateCursor = useCallback((roomId: string, coordinates: [number, number]) => {
     if (!socket || !connected) return;
 
@@ -101,6 +157,7 @@ const useWebSocket = ({
   return {
     socket,
     connected,
+    authenticating,
     joinRoom,
     leaveRoom,
     updateCursor

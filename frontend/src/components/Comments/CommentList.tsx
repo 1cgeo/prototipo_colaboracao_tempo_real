@@ -1,22 +1,12 @@
 import React from 'react';
 import {
-  List,
-  ListItem,
-  ListItemText,
-  ListItemSecondaryAction,
-  IconButton,
-  Typography,
   Box,
+  Typography,
   CircularProgress,
   ButtonBase
 } from '@mui/material';
-import {
-  Edit as EditIcon,
-  Delete as DeleteIcon,
-  Reply as ReplyIcon
-} from '@mui/icons-material';
 import { Comment } from '../../types';
-import { formatDistanceToNow } from 'date-fns';
+import { CommentItem } from '../Comments';
 
 interface CommentListProps {
   comments: Comment[];
@@ -62,82 +52,28 @@ const CommentList: React.FC<CommentListProps> = ({
   }
 
   return (
-    <List>
+    <Box sx={{ p: 2 }}>
       {comments.map((comment) => (
-        <Box key={comment.id}>
-          <ButtonBase
-            onClick={() => onSelectComment(comment)}
-            sx={{ width: '100%', textAlign: 'left' }}
-          >
-            <ListItem
-              sx={{
-                mb: 1,
-                borderRadius: 1,
-                width: '100%',
-                '&:hover': {
-                  backgroundColor: 'rgba(0, 0, 0, 0.04)'
-                }
-              }}
-            >
-              <ListItemText
-                primary={comment.content}
-                secondary={
-                  <>
-                    By {comment.authorName} •{' '}
-                    {formatDistanceToNow(new Date(comment.createdAt))} ago
-                    {comment.replies.length > 0 && (
-                      <> • {comment.replies.length} {comment.replies.length === 1 ? 'reply' : 'replies'}</>
-                    )}
-                  </>
-                }
-                primaryTypographyProps={{
-                  sx: {
-                    display: '-webkit-box',
-                    overflow: 'hidden',
-                    WebkitBoxOrient: 'vertical',
-                    WebkitLineClamp: 2,
-                  }
-                }}
-              />
-              <ListItemSecondaryAction>
-                <IconButton
-                  edge="end"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onReplyComment(comment);
-                  }}
-                  size="small"
-                  sx={{ mr: 1 }}
-                >
-                  <ReplyIcon />
-                </IconButton>
-                <IconButton
-                  edge="end"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onEditComment(comment);
-                  }}
-                  size="small"
-                  sx={{ mr: 1 }}
-                >
-                  <EditIcon />
-                </IconButton>
-                <IconButton
-                  edge="end"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onDeleteComment(comment);
-                  }}
-                  size="small"
-                >
-                  <DeleteIcon />
-                </IconButton>
-              </ListItemSecondaryAction>
-            </ListItem>
-          </ButtonBase>
-        </Box>
+        <ButtonBase
+          key={comment.id}
+          onClick={() => onSelectComment(comment)}
+          sx={{ width: '100%', textAlign: 'left', mb: 2, display: 'block' }}
+        >
+          <CommentItem
+            comment={comment}
+            showLocation={true}
+            showActions={true}
+            onEdit={() => onEditComment(comment)}
+            onDelete={() => onDeleteComment(comment)}
+            onReply={() => onReplyComment(comment)}
+            onLocationClick={(event: React.MouseEvent) => {
+              event.stopPropagation();
+              onSelectComment(comment);
+            }}
+          />
+        </ButtonBase>
       ))}
-    </List>
+    </Box>
   );
 };
 
