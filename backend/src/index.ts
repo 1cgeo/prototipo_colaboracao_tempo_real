@@ -3,10 +3,6 @@ import { createServer } from 'http';
 import cors from 'cors';
 import helmet from 'helmet';
 import compression from 'compression';
-import rateLimit from 'express-rate-limit';
-import swaggerJSDoc from 'swagger-jsdoc';
-import swaggerUi from 'swagger-ui-express';
-
 import { config } from './config/index.js';
 import logger from './utils/logger.js';
 import { errorHandler } from './middleware/error.js';
@@ -35,42 +31,6 @@ app.use(
   }),
 );
 
-// Rate limiting
-const limiter = rateLimit({
-  windowMs: config.rateLimit.windowMs,
-  max: config.rateLimit.max,
-});
-app.use(limiter);
-
-// Trust proxy if enabled
-if (config.security.trustProxy) {
-  app.set('trust proxy', 1);
-}
-
-// Setup Swagger
-if (config.features.enableSwagger) {
-  const swaggerOptions = {
-    definition: {
-      openapi: '3.0.0',
-      info: {
-        title: 'Collaborative Map API',
-        version: '1.0.0',
-        description: 'API for real-time collaborative map application',
-      },
-      servers: [
-        {
-          url: `http://localhost:${config.port}`,
-          description: 'Development server',
-        },
-      ],
-    },
-    apis: ['./src/routes/*.ts'],
-  };
-
-  const swaggerSpec = swaggerJSDoc(swaggerOptions);
-  app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec));
-}
-
 // Routes
 app.use('/api', routes);
 
@@ -83,9 +43,6 @@ server.listen(config.port, () => {
     `Server running on port ${config.port} in ${config.nodeEnv} mode`,
   );
   logger.info(`WebSocket server running at path ${config.ws.path}`);
-  if (config.features.enableSwagger) {
-    logger.info(`Swagger documentation available at /api-docs`);
-  }
 });
 
 // Handle shutdown

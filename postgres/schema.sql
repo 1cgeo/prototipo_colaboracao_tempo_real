@@ -84,8 +84,8 @@ CREATE INDEX idx_anonymous_users_last_seen ON anonymous_users(last_seen_at);
 -- Spatial comments indexes
 -- GiST index for spatial queries (nearest neighbor searches, bounding box queries)
 CREATE INDEX idx_spatial_comments_location ON spatial_comments USING GIST(location);
--- Combined index for room-based spatial queries
-CREATE INDEX idx_spatial_comments_room_location ON spatial_comments USING GIST(map_room_uuid, location);
+-- B-tree index for map room lookups
+CREATE INDEX idx_spatial_comments_map_room ON spatial_comments(map_room_uuid);
 -- B-tree index for version control operations
 CREATE INDEX idx_spatial_comments_version ON spatial_comments(id, version);
 
@@ -99,8 +99,8 @@ CREATE INDEX idx_activity_logs_map_room ON activity_logs(map_room_uuid, created_
 -- Helpful function for nearby comments
 CREATE OR REPLACE FUNCTION get_nearby_comments(
     room_uuid UUID,
-    lat FLOAT,
-    lng FLOAT,
+    search_lat FLOAT,
+    search_lng FLOAT,
     distance_meters FLOAT DEFAULT 100
 )
 RETURNS TABLE (
@@ -108,8 +108,8 @@ RETURNS TABLE (
     content TEXT,
     author_name VARCHAR(255),
     distance FLOAT,
-    lat FLOAT,
-    lng FLOAT
+    latitude FLOAT,
+    longitude FLOAT
 ) AS $$
 BEGIN
     RETURN QUERY
@@ -119,18 +119,18 @@ BEGIN
         c.author_name,
         ST_Distance(
             c.location::geography, 
-            ST_SetSRID(ST_MakePoint(lng, lat), 4326)::geography
+            ST_SetSRID(ST_MakePoint(search_lng, search_lat), 4326)::geography
         ) as distance,
-        ST_Y(c.location::geometry) as lat,
-        ST_X(c.location::geometry) as lng
+        ST_Y(c.location::geometry) as latitude,
+        ST_X(c.location::geometry) as longitude
     FROM spatial_comments c
     WHERE c.map_room_uuid = room_uuid
         AND ST_DWithin(
             c.location::geography, 
-            ST_SetSRID(ST_MakePoint(lng, lat), 4326)::geography, 
+            ST_SetSRID(ST_MakePoint(search_lng, search_lat), 4326)::geography, 
             distance_meters
         )
-    ORDER BY c.location <-> ST_SetSRID(ST_MakePoint(lng, lat), 4326);
+    ORDER BY c.location <-> ST_SetSRID(ST_MakePoint(search_lng, search_lat), 4326);
 END;
 $$ LANGUAGE plpgsql;
 

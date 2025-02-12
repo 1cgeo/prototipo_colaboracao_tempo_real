@@ -17,7 +17,6 @@ const configSchema = z.object({
     database: z.string(),
     user: z.string(),
     password: z.string(),
-    ssl: z.coerce.boolean().default(false),
   }),
 
   // WebSocket
@@ -27,26 +26,9 @@ const configSchema = z.object({
     pingInterval: z.coerce.number().default(3000),
   }),
 
-  // Rate Limiting
-  rateLimit: z.object({
-    windowMs: z.coerce.number().default(900000), // 15 minutes
-    max: z.coerce.number().default(100), // Limit each IP to 100 requests per windowMs
-  }),
-
   // Security
   security: z.object({
     corsOrigin: z.string().default('http://localhost:3000'),
-    trustProxy: z.coerce.boolean().default(true),
-  }),
-
-  // Logging
-  logging: z.object({
-    level: z.enum(['error', 'warn', 'info', 'debug']).default('info'),
-  }),
-
-  // Features
-  features: z.object({
-    enableSwagger: z.coerce.boolean().default(true),
   }),
 });
 
@@ -60,26 +42,14 @@ const envConfig = {
     database: process.env.DB_NAME,
     user: process.env.DB_USER,
     password: process.env.DB_PASSWORD,
-    ssl: process.env.DB_SSL,
   },
   ws: {
     path: process.env.WS_PATH,
     pingTimeout: process.env.WS_PING_TIMEOUT,
     pingInterval: process.env.WS_PING_INTERVAL,
   },
-  rateLimit: {
-    windowMs: process.env.RATE_LIMIT_WINDOW_MS,
-    max: process.env.RATE_LIMIT_MAX_REQUESTS,
-  },
   security: {
     corsOrigin: process.env.CORS_ORIGIN,
-    trustProxy: process.env.TRUST_PROXY,
-  },
-  logging: {
-    level: process.env.LOG_LEVEL,
-  },
-  features: {
-    enableSwagger: process.env.ENABLE_SWAGGER,
   },
 };
 

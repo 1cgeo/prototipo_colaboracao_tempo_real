@@ -40,7 +40,6 @@ const dbConfig = {
   database: config.db.database,
   user: config.db.user,
   password: config.db.password,
-  ssl: config.db.ssl ? { rejectUnauthorized: false } : false,
   max: 30, // Maximum number of connections
 };
 
