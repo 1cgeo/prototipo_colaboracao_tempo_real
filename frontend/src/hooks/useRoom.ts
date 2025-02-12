@@ -1,7 +1,8 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { 
   Room, RoomDetails, RoomCreateInput, RoomUpdateInput, 
-  User, RoomStateEvent, CursorPosition, Point 
+  User, RoomStateEvent, CursorPosition, Point,
+  RoomJoinEvent, RoomLeaveEvent
 } from '../types';
 import { roomApi } from '../utils/api';
 import useWebSocket from './useWebSocket';
@@ -45,30 +46,30 @@ const useRoom = ({ userId, displayName, onError }: UseRoomOptions) => {
       setState(prev => ({
         ...prev,
         users: event.users,
-        cursors: event.cursors.reduce((acc, cursor) => ({
+        cursors: event.cursors.reduce<Record<string, CursorPosition>>((acc, cursor) => ({
           ...acc,
-          [cursor.userId]: cursor
+          [cursor.user_id]: cursor
         }), {}),
         activeUsers: event.users.length
       }));
       reconnectAttemptsRef.current = 0;
     },
-    onJoin: (event) => {
+    onJoin: (event: RoomJoinEvent) => {
       setState(prev => ({
         ...prev,
-        users: [...prev.users.filter(u => u.id !== event.userId), {
-          id: event.userId,
-          displayName: event.displayName,
-          joinedAt: new Date(event.timestamp).toISOString()
+        users: [...prev.users.filter(u => u.id !== event.user_id), {
+          id: event.user_id,
+          display_name: event.display_name,
+          joined_at: new Date(event.timestamp).toISOString()
         }],
         activeUsers: prev.activeUsers + 1
       }));
     },
-    onLeave: (event) => {
+    onLeave: (event: RoomLeaveEvent) => {
       setState(prev => {
-        const newUsers = prev.users.filter(u => u.id !== event.userId);
+        const newUsers = prev.users.filter(u => u.id !== event.user_id);
         const newCursors = { ...prev.cursors };
-        delete newCursors[event.userId];
+        delete newCursors[event.user_id];
 
         return {
           ...prev,
@@ -83,8 +84,8 @@ const useRoom = ({ userId, displayName, onError }: UseRoomOptions) => {
         ...prev,
         cursors: {
           ...prev.cursors,
-          [event.userId]: {
-            userId: event.userId,
+          [event.user_id]: {
+            user_id: event.user_id,
             location: event.location,
             timestamp: event.timestamp
           }

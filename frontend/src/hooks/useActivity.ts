@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { Activity, ActivityType, UIActivity, toCamelCase } from '../types';
-import { activityApi, getSocket } from '../utils/api';
+import { Activity, ActivityType } from '../types';
+import { activityApi } from '../utils/activityApi';
+import { getSocket } from '../utils/api';
 
 interface UseActivityOptions {
   roomId: string | null;
@@ -21,7 +22,7 @@ interface ActivitySummary {
     userName: string;
     count: number;
   }>;
-  recentActivityRate: number;
+  recentActivityRate: number; // activities per minute in last 5 minutes
 }
 
 const DEFAULT_LIMIT = 50;
@@ -32,25 +33,12 @@ const useActivity = ({
   limit = DEFAULT_LIMIT,
   onError 
 }: UseActivityOptions) => {
-  const [activities, setActivities] = useState<UIActivity[]>([]);
+  const [activities, setActivities] = useState<Activity[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<Error | null>(null);
   const [hasMore, setHasMore] = useState(false);
-  const [lastTimestamp, setLastTimestamp] = useState<string | undefined>(undefined);
   const loadingRef = useRef(false);
   const isMountedRef = useRef(true);
-
-  // Convert Activity to UIActivity
-  const convertActivity = useCallback((activity: Activity): UIActivity => {
-    return {
-      id: activity.id,
-      type: activity.type,
-      userId: activity.user_id,
-      userName: activity.user_name,
-      metadata: activity.metadata,
-      createdAt: activity.created_at
-    };
-  }, []);
 
   // Load activities
   const loadActivities = useCallback(async (reset: boolean = false) => {
@@ -58,27 +46,27 @@ const useActivity = ({
 
     loadingRef.current = true;
     setLoading(true);
+
     try {
-      const response = await activityApi.getLog(roomId, { 
-        before: reset ? undefined : lastTimestamp,
-        limit
-      });
+      // Se for reset, não usa cursor de paginação
+      // Se não for reset, usa a data da última atividade como cursor
+      const options = reset ? { limit } : {
+        limit,
+        before: activities[activities.length - 1]?.created_at
+      };
+
+      const response = await activityApi.getLog(roomId, options);
       
       if (!isMountedRef.current) return;
 
       setActivities(prev => {
-        const newActivities = reset 
-          ? response.map(convertActivity)
-          : [...prev, ...response.map(convertActivity)];
+        const newActivities = reset ? response : [...prev, ...response];
+        // Manter buffer size para performance
         return newActivities.slice(-ACTIVITY_BUFFER_SIZE);
       });
       
+      // Se recebemos menos itens que o limite, não há mais para carregar
       setHasMore(response.length >= limit);
-      
-      if (response.length > 0) {
-        setLastTimestamp(response[response.length - 1].created_at);
-      }
-      
       setError(null);
     } catch (error) {
       if (!isMountedRef.current) return;
@@ -91,7 +79,7 @@ const useActivity = ({
       }
       loadingRef.current = false;
     }
-  }, [roomId, limit, lastTimestamp, onError, convertActivity]);
+  }, [roomId, limit, activities, onError]);
 
   // Load more function
   const loadMore = useCallback(async () => {
@@ -106,7 +94,7 @@ const useActivity = ({
 
     const handleActivity = (activity: Activity) => {
       setActivities(prev => {
-        const newActivities = [convertActivity(activity), ...prev];
+        const newActivities = [activity, ...prev];
         return newActivities.slice(0, ACTIVITY_BUFFER_SIZE);
       });
     };
@@ -116,7 +104,7 @@ const useActivity = ({
     return () => {
       socket.off('activity', handleActivity);
     };
-  }, [roomId, convertActivity]);
+  }, [roomId]);
 
   // Reset when room changes
   useEffect(() => {
@@ -125,7 +113,6 @@ const useActivity = ({
     } else {
       setActivities([]);
       setHasMore(false);
-      setLastTimestamp(undefined);
     }
   }, [roomId, loadActivities]);
 
@@ -137,43 +124,20 @@ const useActivity = ({
     };
   }, []);
 
-  // Add new activity
-  const addActivity = useCallback((activity: Activity) => {
-    setActivities(prev => {
-      const newActivities = [convertActivity(activity), ...prev];
-      return newActivities.slice(0, ACTIVITY_BUFFER_SIZE);
-    });
-  }, [convertActivity]);
-
-  // Filter activities by type
-  const filterByType = useCallback((type: ActivityType) => {
-    return activities.filter(activity => activity.type === type);
-  }, [activities]);
-
-  // Filter activities by user
-  const filterByUser = useCallback((userId: string) => {
-    return activities.filter(activity => activity.userId === userId);
-  }, [activities]);
-
-  // Get user activities
-  const getUserActivities = useCallback(async (userId: string, limit: number = 10) => {
-    if (!roomId) return [];
-
-    try {
-      const activities = await activityApi.getUserActivity(roomId, userId);
-      return activities.map(convertActivity).slice(0, limit);
-    } catch (error) {
-      const err = error as Error;
-      onError?.(err);
-      throw err;
-    }
-  }, [roomId, onError, convertActivity]);
-
   // Get activity summary
   const getActivitySummary = useCallback((): ActivitySummary => {
     const summary: ActivitySummary = {
       totalActivities: activities.length,
-      byType: {},
+      byType: {
+        'ROOM_JOIN': 0,
+        'ROOM_LEAVE': 0,
+        'COMMENT_CREATE': 0,
+        'COMMENT_UPDATE': 0,
+        'COMMENT_DELETE': 0,
+        'REPLY_CREATE': 0,
+        'REPLY_UPDATE': 0,
+        'REPLY_DELETE': 0
+      },
       byUser: {},
       mostActiveUsers: [],
       recentActivityRate: 0
@@ -186,24 +150,24 @@ const useActivity = ({
 
     activities.forEach(activity => {
       // By type
-      summary.byType[activity.type] = (summary.byType[activity.type] || 0) + 1;
+      summary.byType[activity.type] += 1;
 
       // By user
-      if (!summary.byUser[activity.userId]) {
-        summary.byUser[activity.userId] = {
+      if (!summary.byUser[activity.user_id]) {
+        summary.byUser[activity.user_id] = {
           count: 0,
-          lastActivity: activity.createdAt,
-          userName: activity.userName
+          lastActivity: activity.created_at,
+          userName: activity.user_name
         };
       }
-      summary.byUser[activity.userId].count += 1;
+      summary.byUser[activity.user_id].count += 1;
 
-      if (activity.createdAt > summary.byUser[activity.userId].lastActivity) {
-        summary.byUser[activity.userId].lastActivity = activity.createdAt;
+      if (activity.created_at > summary.byUser[activity.user_id].lastActivity) {
+        summary.byUser[activity.user_id].lastActivity = activity.created_at;
       }
 
       // Recent activity count
-      if (new Date(activity.createdAt).getTime() >= fiveMinutesAgo) {
+      if (new Date(activity.created_at).getTime() >= fiveMinutesAgo) {
         recentCount += 1;
       }
     });
@@ -231,10 +195,6 @@ const useActivity = ({
     hasMore,
     loadActivities,
     loadMore,
-    addActivity,
-    filterByType,
-    filterByUser,
-    getUserActivities,
     getActivitySummary
   };
 };

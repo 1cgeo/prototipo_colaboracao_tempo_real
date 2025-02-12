@@ -22,7 +22,7 @@ import {
 import { formatDistanceToNow } from 'date-fns';
 import { Comment } from '../../types';
 import { useCollaboration } from '../../contexts/CollaborationContext';
-import { commentApi, replyApi } from '../../utils/api';
+import { useComments } from '../../hooks';
 import { ReplyList, ReplyCreate } from '../Comments';
 import { UserBadge } from '../UserBadge';
 
@@ -43,16 +43,24 @@ const CommentDetail: React.FC<CommentDetailProps> = ({ comment, onClose }) => {
     open: false
   });
   const [content, setContent] = useState('');
-  const [loading, setLoading] = useState(false);
   const [error, setError] = useState<Error | null>(null);
+
+  const { 
+    loading,
+    updateComment,
+    deleteComment,
+    createReply,
+    updateReply,
+    deleteReply
+  } = useComments({
+    roomId: currentRoom?.uuid || null,
+    onError: setError
+  });
 
   // Handle comment edit
   const handleEditComment = async () => {
-    if (!currentRoom) return;
-    setLoading(true);
-
     try {
-      await commentApi.update(currentRoom.uuid, comment.id, {
+      await updateComment(comment.id, {
         content,
         version: comment.version
       });
@@ -60,80 +68,55 @@ const CommentDetail: React.FC<CommentDetailProps> = ({ comment, onClose }) => {
       setContent('');
     } catch (error) {
       setError(error as Error);
-    } finally {
-      setLoading(false);
     }
   };
 
   // Handle comment delete
   const handleDeleteComment = async () => {
-    if (!currentRoom) return;
-    setLoading(true);
-
     try {
-      await commentApi.delete(currentRoom.uuid, comment.id);
+      await deleteComment(comment.id, comment.version);
       onClose();
     } catch (error) {
       setError(error as Error);
-    } finally {
-      setLoading(false);
     }
   };
 
   // Handle reply create
   const handleReplyCreate = async (content: string) => {
-    if (!currentRoom) return;
-    setLoading(true);
-
     try {
-      await replyApi.create(currentRoom.uuid, comment.id, { content });
+      await createReply(comment.id, { content });
       setDialogState({ type: 'reply', open: false });
     } catch (error) {
       setError(error as Error);
       throw error;
-    } finally {
-      setLoading(false);
     }
   };
 
   // Handle reply update
   const handleReplyUpdate = async (replyId: string, content: string, version: number) => {
-    if (!currentRoom) return;
-    setLoading(true);
-
     try {
-      await replyApi.update(currentRoom.uuid, comment.id, replyId, {
+      await updateReply(comment.id, replyId, {
         content,
         version
       });
     } catch (error) {
       setError(error as Error);
       throw error;
-    } finally {
-      setLoading(false);
     }
   };
 
   // Handle reply delete
-  const handleReplyDelete = async (replyId: string) => {
-    if (!currentRoom) return;
-    setLoading(true);
-
+  const handleReplyDelete = async (replyId: string, version: number) => {
     try {
-      await replyApi.delete(currentRoom.uuid, comment.id, replyId);
+      await deleteReply(comment.id, replyId, version);
     } catch (error) {
       setError(error as Error);
-    } finally {
-      setLoading(false);
     }
   };
 
   return (
     <Card sx={{ 
-      position: 'absolute', 
-      bottom: 20, 
-      right: 20, 
-      width: 400,
+      width: '100%',
       maxHeight: '80vh',
       display: 'flex',
       flexDirection: 'column'
@@ -195,7 +178,7 @@ const CommentDetail: React.FC<CommentDetailProps> = ({ comment, onClose }) => {
         <ReplyList
           replies={comment.replies}
           onEditReply={(reply) => handleReplyUpdate(reply.id, reply.content, reply.version)}
-          onDeleteReply={(reply) => handleReplyDelete(reply.id)}
+          onDeleteReply={(reply) => handleReplyDelete(reply.id, reply.version)}
         />
 
         {/* Error Display */}
@@ -252,7 +235,7 @@ const CommentDetail: React.FC<CommentDetailProps> = ({ comment, onClose }) => {
         error={error}
         comment={comment}
         onClose={() => setDialogState({ type: 'reply', open: false })}
-        onSubmit={handleReplyCreate}
+        onSubmit={async ({ content }) => handleReplyCreate(content)}
       />
     </Card>
   );

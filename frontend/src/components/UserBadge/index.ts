@@ -1,2 +1,2 @@
 export { default as UserBadge } from './UserBadge';
-export * from './utils';
+export { stringToColor } from './utils';

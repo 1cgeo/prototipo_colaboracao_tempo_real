@@ -2,10 +2,12 @@ import React, { useMemo } from 'react';
 import { Avatar, Box, Tooltip, Typography } from '@mui/material';
 import { stringToColor } from './utils';
 
+type Size = 'small' | 'medium' | 'large';
+
 interface UserBadgeProps {
   userId: string;
   displayName: string;
-  size?: 'small' | 'medium' | 'large';
+  size?: Size;
   showTooltip?: boolean;
   abbreviated?: boolean;
 }
@@ -16,7 +18,7 @@ interface SizeConfig {
   spacing: number;
 }
 
-const sizeConfigs: Record<UserBadgeProps['size'], SizeConfig> = {
+const sizeConfigs: Record<Size, SizeConfig> = {
   small: {
     avatarSize: 24,
     typographyVariant: 'caption',
@@ -34,6 +36,19 @@ const sizeConfigs: Record<UserBadgeProps['size'], SizeConfig> = {
   }
 };
 
+// Utility functions moved into component file since they're only used here
+function getInitials(displayName: string): string {
+  return displayName
+    .split(' ')
+    .map(word => word[0])
+    .join('');
+}
+
+function getAbbreviatedName(displayName: string): string {
+  const [first, last] = displayName.split(' ');
+  return `${first} ${last[0]}.`;
+}
+
 const UserBadge: React.FC<UserBadgeProps> = ({
   userId,
   displayName,
@@ -47,14 +62,11 @@ const UserBadge: React.FC<UserBadgeProps> = ({
   const config = sizeConfigs[size];
 
   // Get initials from display name
-  const initials = displayName
-    .split(' ')
-    .map(word => word[0])
-    .join('');
+  const initials = getInitials(displayName);
 
   // Abbreviated display name if needed
   const displayText = abbreviated 
-    ? `${displayName.split(' ')[0]} ${initials.split('')[1]}.`
+    ? getAbbreviatedName(displayName)
     : displayName;
 
   const badge = (

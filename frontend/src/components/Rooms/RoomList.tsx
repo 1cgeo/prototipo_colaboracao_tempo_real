@@ -83,7 +83,7 @@ const RoomList: React.FC<RoomListProps> = ({
               <ListItemSecondaryAction>
                 <Chip
                   icon={<PeopleIcon />}
-                  label={`${room.activeUsers} online`}
+                  label={`${room.active_users_count} online`}
                   size="small"
                   sx={{ mr: 1 }}
                 />

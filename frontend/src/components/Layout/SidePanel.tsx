@@ -104,7 +104,7 @@ const SidePanel: React.FC = () => {
             <ListItem key={user.id}>
               <UserBadge
                 userId={user.id}
-                displayName={user.displayName}
+                displayName={user.display_name}
                 size="medium"
                 showTooltip={false}
               />
@@ -134,8 +134,8 @@ const SidePanel: React.FC = () => {
                 <ListItemText
                   primary={
                     <UserBadge
-                      userId={activity.userId}
-                      displayName={getUserDisplayName(activity.userId)}
+                      userId={activity.user_id}
+                      displayName={getUserDisplayName(activity.user_id)}
                       size="small"
                       abbreviated
                     />
@@ -144,7 +144,7 @@ const SidePanel: React.FC = () => {
                     <>
                       {getActivityText(activity)}
                       {' • '}
-                      {formatDistanceToNow(new Date(activity.timestamp))} ago
+                      {formatDistanceToNow(new Date(activity.created_at))} ago
                     </>
                   }
                 />

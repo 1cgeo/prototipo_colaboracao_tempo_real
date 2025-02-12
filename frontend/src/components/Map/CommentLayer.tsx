@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useState, useMemo } from 'react';
 import maplibregl from 'maplibre-gl';
 import { Box } from '@mui/material';
 import { useMap } from '../../contexts/MapContext';
@@ -10,96 +10,63 @@ import {
   CommentList 
 } from '../Comments';
 import { useComments } from '../../hooks';
-
-interface CommentMarker {
-  marker: maplibregl.Marker;
-  popup: maplibregl.Popup;
-}
+import useNearbyComments from '../../hooks/useNearbyComments';
 
 interface CreateDialogState {
   open: boolean;
   location: Point | null;
 }
 
+const SEARCH_RADIUS = 1000; // 1km raio de busca padrão
+
 const CommentLayer: React.FC = () => {
   const { map } = useMap();
   const { currentRoom } = useCollaboration();
-  const { 
-    comments, 
-    loading, 
-    error,
-    createComment, 
-    updateComment,
-    deleteComment,
-    selectedComment,
-    selectComment 
-  } = useComments({
-    roomId: currentRoom?.uuid || null
-  });
+  const [selectedComment, setSelectedComment] = useState<string | null>(null);
 
-  // State for markers and dialogs
-  const [markers, setMarkers] = useState<Map<string, CommentMarker>>(new Map());
+  // Estado para o dialog de criação
   const [createDialog, setCreateDialog] = useState<CreateDialogState>({
     open: false,
     location: null
   });
 
-  // Clear existing markers and popups
-  const clearMarkers = useCallback(() => {
-    markers.forEach(({ marker, popup }) => {
-      marker.remove();
-      popup.remove();
-    });
-    setMarkers(new Map());
-  }, [markers]);
-
-  // Create comment marker
-  const createCommentMarker = useCallback((comment: Comment) => {
+  // Calcular centro atual do mapa
+  const currentCenter = useMemo((): Point | null => {
     if (!map) return null;
+    const center = map.getCenter();
+    return {
+      type: 'Point',
+      coordinates: [center.lng, center.lat] as [number, number]
+    };
+  }, [map]);
 
-    // Create marker element
-    const el = document.createElement('div');
-    el.className = 'comment-marker';
-    el.style.cssText = `
-      width: 30px;
-      height: 30px;
-      background: #1976d2;
-      border-radius: 50%;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      color: white;
-      cursor: pointer;
-      box-shadow: 0 2px 4px rgba(0,0,0,0.2);
-    `;
-    el.innerHTML = '<svg width="20" height="20" viewBox="0 0 24 24"><path fill="currentColor" d="M21 6h-2v9H6v2c0 .55.45 1 1 1h11l4 4V7c0-.55-.45-1-1-1zm-4 6V3c0-.55-.45-1-1-1H3c-.55 0-1 .45-1 1v14l4-4h10c.55 0 1-.45 1-1z"/></svg>';
+  // Hook para comentários próximos
+  const {
+    comments,
+    loading,
+    error,
+    refetch: refetchNearbyComments
+  } = useNearbyComments({
+    roomId: currentRoom?.uuid || null,
+    center: currentCenter,
+    radius: SEARCH_RADIUS,
+    enabled: !!currentRoom
+  });
 
-    // Create popup
-    const popup = new maplibregl.Popup({
-      closeButton: false,
-      closeOnClick: false,
-      maxWidth: '300px',
-      offset: [0, -15]
-    });
-
-    // Create marker
-    const marker = new maplibregl.Marker({
-      element: el,
-      anchor: 'bottom'
-    })
-      .setLngLat(comment.location.coordinates)
-      .addTo(map);
-
-    // Add click handler
-    el.addEventListener('click', () => {
-      selectComment(comment.id);
-    });
-
-    return { marker, popup };
-  }, [map, selectComment]);
+  // Hook principal de comentários para operações CRUD
+  const { 
+    createComment, 
+    updateComment,
+    deleteComment,
+  } = useComments({
+    roomId: currentRoom?.uuid || null,
+    onError: (error) => {
+      console.error('Comments operation failed:', error);
+    }
+  });
 
   // Setup map click handler for creating new comments
-  useEffect(() => {
+  React.useEffect(() => {
     if (!map) return;
 
     const handleMapClick = (e: maplibregl.MapMouseEvent) => {
@@ -109,7 +76,7 @@ const CommentLayer: React.FC = () => {
         open: true,
         location: {
           type: 'Point',
-          coordinates: [e.lngLat.lng, e.lngLat.lat]
+          coordinates: [e.lngLat.lng, e.lngLat.lat] as [number, number]
         }
       });
     };
@@ -121,47 +88,46 @@ const CommentLayer: React.FC = () => {
     };
   }, [map, currentRoom]);
 
-  // Update markers when comments change
-  useEffect(() => {
-    if (!map) return;
-
-    clearMarkers();
-    const newMarkers = new Map<string, CommentMarker>();
-
-    comments.forEach(comment => {
-      const marker = createCommentMarker(comment);
-      if (marker) {
-        newMarkers.set(comment.id, marker);
-      }
-    });
-
-    setMarkers(newMarkers);
-  }, [map, comments, clearMarkers, createCommentMarker]);
-
-  // Handle create dialog
+  // Handler para criação de comentário
   const handleCreateComment = async (input: CommentCreateInput) => {
     try {
       if (!currentRoom) throw new Error('No room selected');
       await createComment(input);
       setCreateDialog({ open: false, location: null });
+      // Atualizar lista de comentários próximos
+      refetchNearbyComments();
     } catch (error) {
       console.error('Error creating comment:', error);
     }
   };
 
-  // Handler for comment edit
+  // Handler para atualização de comentário
   const handleUpdateComment = async (comment: Comment) => {
     try {
       await updateComment(comment.id, {
         content: comment.content,
         version: comment.version
       });
+      refetchNearbyComments();
     } catch (error) {
       console.error('Error updating comment:', error);
     }
   };
 
-  // Render list of comments
+  // Handler para deleção de comentário
+  const handleDeleteComment = async (comment: Comment) => {
+    try {
+      await deleteComment(comment.id, comment.version);
+      if (selectedComment === comment.id) {
+        setSelectedComment(null);
+      }
+      refetchNearbyComments();
+    } catch (error) {
+      console.error('Error deleting comment:', error);
+    }
+  };
+
+  // Render lista de comentários
   const renderCommentList = () => {
     if (!currentRoom) return null;
 
@@ -181,10 +147,10 @@ const CommentLayer: React.FC = () => {
           comments={comments}
           loading={loading}
           error={error}
-          onSelectComment={(comment) => selectComment(comment.id)}
+          onSelectComment={(comment) => setSelectedComment(comment.id)}
           onEditComment={handleUpdateComment}
-          onDeleteComment={(comment) => deleteComment(comment.id)}
-          onReplyComment={(comment) => selectComment(comment.id)}
+          onDeleteComment={handleDeleteComment}
+          onReplyComment={(comment) => setSelectedComment(comment.id)}
         />
       </Box>
     );
@@ -212,7 +178,7 @@ const CommentLayer: React.FC = () => {
         <Box sx={{ position: 'absolute', bottom: 20, right: 20, width: 400 }}>
           <CommentDetail
             comment={comments.find(c => c.id === selectedComment)!}
-            onClose={() => selectComment(null)}
+            onClose={() => setSelectedComment(null)}
           />
         </Box>
       )}

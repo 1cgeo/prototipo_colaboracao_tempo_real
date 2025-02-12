@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback, useRef } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { Socket } from 'socket.io-client';
 import { initializeSocket, disconnectSocket, getSocket, wsEvents } from '../utils/api';
 import { 
@@ -14,8 +14,7 @@ import {
   ReplyCreateEvent,
   ReplyUpdateEvent,
   ReplyDeleteEvent,
-  Point,
-  APIError
+  Point
 } from '../types';
 
 interface UseWebSocketOptions {
@@ -45,10 +44,6 @@ interface WebSocketState {
 }
 
 const MAX_RECONNECT_ATTEMPTS = 5;
-
-const isAuthenticationError = (error: unknown): error is AuthenticationError => {
-  return error instanceof Error && 'code' in error;
-};
 
 const useWebSocket = ({
   userId,
@@ -105,11 +100,10 @@ const useWebSocket = ({
           authenticating: false
         }));
 
-        if (error instanceof APIError) {
+        if (error instanceof Error) {
           onAuthError?.({
-            code: error.code,
-            message: error.message,
-            details: error.details
+            code: 'AUTH_ERROR',
+            message: error.message
           });
         }
         

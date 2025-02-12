@@ -4,8 +4,7 @@ import {
   APIResponse,
   Room, RoomDetails, RoomCreateInput, RoomUpdateInput,
   Comment, CommentCreateInput, CommentUpdateInput,
-  Reply, ReplyCreateInput, ReplyUpdateInput,
-  Activity, Point, MapBounds,
+  Point, MapBounds,
   AuthConfig, AuthenticationSuccess, ErrorDetails,
   CommentCreateEvent, CommentUpdateEvent, CommentDeleteEvent,
   ReplyCreateEvent, ReplyUpdateEvent, ReplyDeleteEvent,
@@ -28,36 +27,12 @@ const WS_CONFIG = {
   autoConnect: false
 };
 
-const CURSOR_THROTTLE_DELAY = 100;
-const CURSOR_DISTANCE_THRESHOLD = 0.0001;
+const CURSOR_THROTTLE_DELAY = 100; // 100ms
+const CURSOR_DISTANCE_THRESHOLD = 0.0001; // Approximately 11 meters at equator
 
 let socket: ExtendedSocket | null = null;
 let reconnectTimer: NodeJS.Timeout | null = null;
 let lastCursorPosition: Point | null = null;
-
-// Custom error class for API errors
-export class APIError extends Error {
-  constructor(
-    public code: string,
-    message: string,
-    public details: ErrorDetails = {}
-  ) {
-    super(message);
-    this.name = 'APIError';
-  }
-}
-
-interface RetryOptions {
-  maxRetries?: number;
-  backoffFactor?: number;
-  initialDelay?: number;
-}
-
-const defaultRetryOptions: Required<RetryOptions> = {
-  maxRetries: 3,
-  backoffFactor: 2,
-  initialDelay: 100
-};
 
 // Socket initialization with reconnection logic
 export const initializeSocket = (config: AuthConfig): Promise<AuthenticationSuccess> => {
@@ -86,7 +61,7 @@ export const initializeSocket = (config: AuthConfig): Promise<AuthenticationSucc
 
     // Handle authentication errors
     socket.on('authentication:error', (error: { code: string; message: string; details?: ErrorDetails }) => {
-      reject(new APIError(error.code, error.message, error.details));
+      reject(new Error(error.message));
     });
 
     // Handle disconnection
@@ -128,53 +103,12 @@ export const disconnectSocket = () => {
   lastCursorPosition = null;
 };
 
-// Operation retry handler with exponential backoff
-const retryOperation = async <T>(
-  operation: () => Promise<T>,
-  shouldRetry: (error: Error) => boolean,
-  options: RetryOptions = {}
-): Promise<T> => {
-  const { maxRetries, backoffFactor, initialDelay } = {
-    ...defaultRetryOptions,
-    ...options
-  };
-
-  let lastError: Error | null = null;
-  for (let attempt = 0; attempt < maxRetries; attempt++) {
-    try {
-      return await operation();
-    } catch (error) {
-      lastError = error as Error;
-      if (!shouldRetry(lastError) || attempt === maxRetries - 1) {
-        throw lastError;
-      }
-
-      const delay = initialDelay * Math.pow(backoffFactor, attempt);
-      await new Promise(resolve => setTimeout(resolve, delay));
-    }
-  }
-
-  throw lastError;
-};
-
-// Version conflict handler
-const handleVersionConflict = async <T>(
-  operation: () => Promise<T>,
-  options?: RetryOptions
-): Promise<T> => {
-  return retryOperation(
-    operation,
-    (error) => error instanceof APIError && error.code === 'VERSION_CONFLICT',
-    options
-  );
-};
-
 // WebSocket Event Emitters
 export const wsEvents = {
   joinRoom: (roomId: string) => {
     if (!socket) throw new Error('Socket not initialized');
     socket.emit('room:join', {
-      roomId,
+      room_id: roomId,
       timestamp: Date.now()
     });
   },
@@ -182,12 +116,12 @@ export const wsEvents = {
   leaveRoom: (roomId: string) => {
     if (!socket) throw new Error('Socket not initialized');
     socket.emit('room:leave', {
-      roomId,
+      room_id: roomId,
       timestamp: Date.now()
     });
   },
 
-  moveCursor: throttle((roomId: string, location: Point) => {
+  moveCursor: throttle((_roomId: string, location: Point) => {
     if (!socket) return;
 
     // Check if cursor has moved enough
@@ -206,7 +140,6 @@ export const wsEvents = {
     lastCursorPosition = location;
 
     const event: CursorMoveEvent = {
-      roomId,
       user_id: socket.auth.user_id,
       location,
       timestamp: Date.now()
@@ -215,11 +148,10 @@ export const wsEvents = {
     socket.emit('cursor:move', event);
   }, CURSOR_THROTTLE_DELAY, { leading: true, trailing: true }),
 
-  createComment: (roomId: string, content: string, location: Point) => {
+  createComment: (_roomId: string, content: string, location: Point) => {
     if (!socket) throw new Error('Socket not initialized');
     
     const event: CommentCreateEvent = {
-      roomId,
       user_id: socket.auth.user_id,
       content,
       location,
@@ -229,11 +161,10 @@ export const wsEvents = {
     socket.emit('comment:create', event);
   },
 
-  updateComment: (roomId: string, commentId: string, content: string, version: number) => {
+  updateComment: (_roomId: string, commentId: string, content: string, version: number) => {
     if (!socket) throw new Error('Socket not initialized');
     
     const event: CommentUpdateEvent = {
-      roomId,
       user_id: socket.auth.user_id,
       comment_id: commentId,
       content,
@@ -244,11 +175,10 @@ export const wsEvents = {
     socket.emit('comment:update', event);
   },
 
-  deleteComment: (roomId: string, commentId: string, version: number) => {
+  deleteComment: (_roomId: string, commentId: string, version: number) => {
     if (!socket) throw new Error('Socket not initialized');
     
     const event: CommentDeleteEvent = {
-      roomId,
       user_id: socket.auth.user_id,
       comment_id: commentId,
       version,
@@ -258,11 +188,10 @@ export const wsEvents = {
     socket.emit('comment:delete', event);
   },
 
-  createReply: (roomId: string, commentId: string, content: string) => {
+  createReply: (_roomId: string, commentId: string, content: string) => {
     if (!socket) throw new Error('Socket not initialized');
     
     const event: ReplyCreateEvent = {
-      roomId,
       user_id: socket.auth.user_id,
       comment_id: commentId,
       content,
@@ -272,11 +201,10 @@ export const wsEvents = {
     socket.emit('reply:create', event);
   },
 
-  updateReply: (roomId: string, commentId: string, replyId: string, content: string, version: number) => {
+  updateReply: (_roomId: string, commentId: string, replyId: string, content: string, version: number) => {
     if (!socket) throw new Error('Socket not initialized');
     
     const event: ReplyUpdateEvent = {
-      roomId,
       user_id: socket.auth.user_id,
       comment_id: commentId,
       reply_id: replyId,
@@ -288,11 +216,10 @@ export const wsEvents = {
     socket.emit('reply:update', event);
   },
 
-  deleteReply: (roomId: string, commentId: string, replyId: string, version: number) => {
+  deleteReply: (_roomId: string, commentId: string, replyId: string, version: number) => {
     if (!socket) throw new Error('Socket not initialized');
     
     const event: ReplyDeleteEvent = {
-      roomId,
       user_id: socket.auth.user_id,
       comment_id: commentId,
       reply_id: replyId,
@@ -304,16 +231,12 @@ export const wsEvents = {
   }
 };
 
-// API Response Handler with proper typing
+// API Response Handler
 async function handleResponse<T>(response: Response): Promise<T> {
   const data: APIResponse<T> = await response.json();
   
   if (data.status === 'error') {
-    throw new APIError(
-      data.code,
-      data.message,
-      data.details
-    );
+    throw new Error(data.message);
   }
   
   return data.data;
@@ -357,7 +280,7 @@ export const roomApi = {
   },
 };
 
-// Comments API with version conflict handling
+// Comments API
 export const commentApi = {
   list: async (roomId: string, bounds?: MapBounds): Promise<Comment[]> => {
     const response = await fetch(API_ROUTES.listComments(roomId, bounds));
@@ -374,14 +297,12 @@ export const commentApi = {
   },
 
   update: async (roomId: string, commentId: string, input: CommentUpdateInput): Promise<Comment> => {
-    return handleVersionConflict(async () => {
-      const response = await fetch(API_ROUTES.updateComment(roomId, commentId), {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(input),
-      });
-      return handleResponse<Comment>(response);
+    const response = await fetch(API_ROUTES.updateComment(roomId, commentId), {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(input),
     });
+    return handleResponse<Comment>(response);
   },
 
   delete: async (roomId: string, commentId: string): Promise<void> => {
@@ -392,52 +313,5 @@ export const commentApi = {
   },
 };
 
-// Replies API with version conflict handling
-export const replyApi = {
-  create: async (roomId: string, commentId: string, input: ReplyCreateInput): Promise<Reply> => {
-    const response = await fetch(API_ROUTES.createReply(roomId, commentId), {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(input),
-    });
-    return handleResponse<Reply>(response);
-  },
-
-  update: async (roomId: string, commentId: string, replyId: string, input: ReplyUpdateInput): Promise<Reply> => {
-    return handleVersionConflict(async () => {
-      const response = await fetch(API_ROUTES.updateReply(roomId, commentId, replyId), {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(input),
-      });
-      return handleResponse<Reply>(response);
-    });
-  },
-
-  delete: async (roomId: string, commentId: string, replyId: string): Promise<void> => {
-    const response = await fetch(API_ROUTES.deleteReply(roomId, commentId, replyId), {
-      method: 'DELETE',
-    });
-    return handleResponse<void>(response);
-  },
-};
-
-// Activity API with pagination
-export const activityApi = {
-  getLog: async (roomId: string, params: { before?: string; limit?: number } = {}): Promise<Activity[]> => {
-    const url = new URL(API_ROUTES.getActivityLog(roomId), window.location.origin);
-    if (params.before) url.searchParams.append('before', params.before);
-    if (params.limit) url.searchParams.append('limit', params.limit.toString());
-    
-    const response = await fetch(url.toString());
-    return handleResponse<Activity[]>(response);
-  },
-
-  getUserActivity: async (roomId: string, userId: string): Promise<Activity[]> => {
-    const response = await fetch(API_ROUTES.getUserActivity(roomId, userId));
-    return handleResponse<Activity[]>(response);
-  },
-};
-
-// Export the socket instance getter
+// Socket instance getter
 export const getSocket = (): ExtendedSocket | null => socket;

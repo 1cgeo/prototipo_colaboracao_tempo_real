@@ -70,7 +70,7 @@ const CursorLayer: React.FC = () => {
       label.style.borderRadius = '4px';
       label.style.fontSize = '12px';
       label.style.whiteSpace = 'nowrap';
-      label.textContent = user.displayName;
+      label.textContent = user.display_name;
       el.appendChild(label);
 
       // Add marker to map
@@ -78,7 +78,7 @@ const CursorLayer: React.FC = () => {
         element: el,
         anchor: 'top-left'
       })
-        .setLngLat(cursor.position.coordinates)
+        .setLngLat(cursor.location.coordinates)
         .addTo(map);
     });
   }, [map, cursors, users]);

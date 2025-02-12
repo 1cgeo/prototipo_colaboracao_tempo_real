@@ -11,6 +11,7 @@ import {
   Alert
 } from '@mui/material';
 import { Comment, ReplyCreateInput } from '../../types';
+import { useCollaboration } from '../../contexts/CollaborationContext';
 
 interface ReplyCreateProps {
   open: boolean;
@@ -30,6 +31,7 @@ const ReplyCreate: React.FC<ReplyCreateProps> = ({
   onSubmit
 }) => {
   const [content, setContent] = useState('');
+  const { getUserDisplayName } = useCollaboration();
 
   const handleSubmit = async () => {
     try {
@@ -73,7 +75,7 @@ const ReplyCreate: React.FC<ReplyCreateProps> = ({
         >
           "{comment.content}"
           <Typography variant="caption" display="block" sx={{ mt: 1 }}>
-            - {comment.authorName}
+            - {getUserDisplayName(comment.author_id)}
           </Typography>
         </Typography>
 

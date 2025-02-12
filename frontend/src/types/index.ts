@@ -85,26 +85,26 @@ export interface RoomUpdateInput {
   description?: string;
 }
 
-// Event base type
-export interface BaseEvent {
-  timestamp: number;
-  room_id: string;
-  user_id: string;
-}
-
 // Room events
-export interface RoomJoinEvent extends BaseEvent {
-  display_name: string;
-}
-
-export interface RoomLeaveEvent extends BaseEvent {
-  display_name: string;
-}
-
-export interface RoomStateEvent extends BaseEvent {
+export interface RoomStateEvent {
   users: User[];
   comments: Comment[];
   cursors: CursorPosition[];
+  timestamp: number;
+}
+
+export interface RoomJoinEvent {
+  room_id: string;
+  user_id: string;
+  display_name: string;
+  timestamp: number;
+}
+
+export interface RoomLeaveEvent {
+  room_id: string;
+  user_id: string;
+  display_name: string;
+  timestamp: number;
 }
 
 // Cursor types
@@ -114,8 +114,10 @@ export interface CursorPosition {
   timestamp: number;
 }
 
-export interface CursorMoveEvent extends BaseEvent {
+export interface CursorMoveEvent {
+  user_id: string;
   location: Point;
+  timestamp: number;
 }
 
 // Comment types
@@ -141,21 +143,21 @@ export interface CommentUpdateInput {
   version: number;
 }
 
-export interface CommentCreateEvent extends BaseEvent {
+export interface CommentEvent {
+  user_id: string;
+  comment_id: string;
   content: string;
+  version: number;
+  timestamp: number;
+}
+
+export interface CommentCreateEvent extends Omit<CommentEvent, 'comment_id' | 'version'> {
   location: Point;
 }
 
-export interface CommentUpdateEvent extends BaseEvent {
-  comment_id: string;
-  content: string;
-  version: number;
-}
+export interface CommentUpdateEvent extends CommentEvent {}
 
-export interface CommentDeleteEvent extends BaseEvent {
-  comment_id: string;
-  version: number;
-}
+export interface CommentDeleteEvent extends Omit<CommentEvent, 'content'> {}
 
 // Reply types
 export interface Reply {
@@ -177,42 +179,22 @@ export interface ReplyUpdateInput {
   version: number;
 }
 
-export interface ReplyCreateEvent extends BaseEvent {
-  comment_id: string;
-  content: string;
-}
-
-export interface ReplyUpdateEvent extends BaseEvent {
+export interface ReplyEvent {
+  user_id: string;
   comment_id: string;
   reply_id: string;
   content: string;
   version: number;
+  timestamp: number;
 }
 
-export interface ReplyDeleteEvent extends BaseEvent {
-  comment_id: string;
-  reply_id: string;
-  version: number;
-}
+export interface ReplyCreateEvent extends Omit<ReplyEvent, 'reply_id' | 'version'> {}
+
+export interface ReplyUpdateEvent extends ReplyEvent {}
+
+export interface ReplyDeleteEvent extends Omit<ReplyEvent, 'content'> {}
 
 // Activity types
-export interface Activity {
-  id: string;
-  type: ActivityType;
-  user_id: string;
-  user_name: string;
-  metadata: ActivityMetadata;
-  created_at: string;
-}
-
-export interface ActivityMetadata {
-  comment_id?: string;
-  reply_id?: string;
-  content?: string;
-  location?: Point;
-  version?: number;
-}
-
 export type ActivityType = 
   | 'ROOM_JOIN'
   | 'ROOM_LEAVE'
@@ -223,45 +205,24 @@ export type ActivityType =
   | 'REPLY_UPDATE'
   | 'REPLY_DELETE';
 
-// Helper types for frontend
-export interface UIComment extends Omit<Comment, 'created_at' | 'updated_at' | 'author_id' | 'author_name'> {
-  createdAt: string;
-  updatedAt: string;
-  authorId: string;
-  authorName: string;
+export interface ActivityMetadata {
+  comment_id?: string;
+  reply_id?: string;
+  content?: string;
+  location?: Point;
+  version?: number;
+  user_id?: string;
+  room_id?: string;
 }
 
-export interface UIReply extends Omit<Reply, 'created_at' | 'updated_at' | 'author_id' | 'author_name'> {
-  createdAt: string;
-  updatedAt: string;
-  authorId: string;
-  authorName: string;
+export interface Activity {
+  id: string;
+  type: ActivityType;
+  user_id: string;
+  user_name: string;
+  metadata: ActivityMetadata;
+  created_at: string;
 }
-
-export interface UIActivity extends Omit<Activity, 'created_at' | 'user_id' | 'user_name'> {
-  createdAt: string;
-  userId: string;
-  userName: string;
-}
-
-// Helper functions for converting between snake_case and camelCase
-export const toCamelCase = <T extends object>(obj: T): { [K in keyof T as Capitalize<string & K>]: T[K] } => {
-  const newObj = {} as { [key: string]: any };
-  Object.keys(obj).forEach(key => {
-    const newKey = key.replace(/_([a-z])/g, g => g[1].toUpperCase());
-    newObj[newKey] = obj[key as keyof T];
-  });
-  return newObj as { [K in keyof T as Capitalize<string & K>]: T[K] };
-};
-
-export const toSnakeCase = <T extends object>(obj: T): { [K in keyof T as Uncapitalize<string & K>]: T[K] } => {
-  const newObj = {} as { [key: string]: any };
-  Object.keys(obj).forEach(key => {
-    const newKey = key.replace(/[A-Z]/g, letter => `_${letter.toLowerCase()}`);
-    newObj[newKey] = obj[key as keyof T];
-  });
-  return newObj as { [K in keyof T as Uncapitalize<string & K>]: T[K] };
-};
 
 // API Routes
 export const API_ROUTES = {
