@@ -50,31 +50,51 @@ export function setupWebSocket(httpServer: any): void {
   // Middleware to authenticate connections
   io.use(async (socket, next) => {
     try {
-      const { user_id } = socket.handshake.auth;
-      console.log(socket.handshake.auth);
+      logger.info('Authentication middleware start', {
+        socketId: socket.id,
+        auth: socket.handshake.auth
+      });
 
+      const { user_id } = socket.handshake.auth;
       if (!user_id) {
+        logger.error('Missing user_id in auth', {
+          socketId: socket.id
+        });
         return next(new Error('Authentication failed: missing user_id'));
       }
 
-      // Store user data in socket
       socket.data.user_id = user_id;
+
+      logger.info('Authentication successful', {
+        socketId: socket.id,
+        userId: user_id
+      });
 
       next();
     } catch (error) {
-      logger.error('Authentication error:', error);
+      logger.error('Authentication error:', {
+        error,
+        socketId: socket.id,
+        auth: socket.handshake.auth
+      });
       next(new Error('Authentication failed'));
     }
   });
 
   // Handle connections
   io.on('connection', async (socket: Socket) => {
+    logger.info('New socket connection established', {
+      socketId: socket.id,
+      auth: socket.handshake.auth
+    });
     try {
-      console.log('connection');
       await connectionManager.handleConnection(socket);
       const { user_id } = socket.data;
 
-      logger.info('Client connected', { user_id });
+      logger.info('Connection handler completed', {
+        socketId: socket.id,
+        userId: user_id
+      });
 
       // Room Events
       socket.on('room:join', async (event: RoomJoinEvent) => {

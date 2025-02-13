@@ -39,53 +39,74 @@ let userInfo: UserInfo | null = null;
 // Socket initialization with reconnection logic
 export const initializeSocket = (config: AuthConfig): Promise<void> => {
   return new Promise((resolve, reject) => {
-    if (socket) {
-      socket.close();
-      socket = null;
-    }
+    try {
+      console.log('Starting socket initialization...'); // Debug log
 
-    if (reconnectTimer) {
-      clearTimeout(reconnectTimer);
-      reconnectTimer = null;
-    }
-
-    socket = io(API_BASE_URL, {
-      ...WS_CONFIG,
-      auth: config
-    }) as ExtendedSocket;
-
-    // Store original auth for client use
-    socket.auth = config;
-
-    // Listen for connection success
-    socket.on('connect', () => {
-      console.log('Socket connected successfully');
-    });
-
-    // Listen for userInfo event
-    socket.on(WS_EVENTS.USER_INFO, (data: UserInfo) => {
-      userInfo = data;
-      resolve();
-    });
-
-    socket.on('error', (error: ErrorEvent) => {
-      console.error('Socket error:', error);
-      reject(new Error(error.message));
-    });
-
-    socket.on('connect_error', (error) => {
-      console.error('Socket connect error:', error);
-      handleReconnection();
-    });
-
-    socket.on('disconnect', (reason) => {
-      console.log('Socket disconnected:', reason);
-      if (reason !== 'io client disconnect') {
-        handleReconnection();
+      if (socket) {
+        console.log('Closing existing socket connection...'); // Debug log
+        socket.close();
+        socket = null;
       }
-    });
 
-    socket.connect();
+      if (reconnectTimer) {
+        console.log('Clearing existing reconnect timer...'); // Debug log
+        clearTimeout(reconnectTimer);
+        reconnectTimer = null;
+      }
+
+      console.log('Creating new socket connection...'); // Debug log
+      socket = io(API_BASE_URL, {
+        ...WS_CONFIG,
+        auth: config
+      }) as ExtendedSocket;
+
+      // Store original auth for client use
+      socket.auth = config;
+
+      // Listen for connection success
+      socket.on('connect', () => {
+        console.log('Socket connected successfully'); // Debug log
+      });
+
+      // Listen for userInfo event
+      socket.on(WS_EVENTS.USER_INFO, (data: UserInfo) => {
+        console.log('Received user info:', data); // Debug log
+        userInfo = data;
+        resolve();
+      });
+
+      socket.on('error', (error: ErrorEvent) => {
+        console.error('Socket error:', error); // Debug log
+        reject(new Error(error.message));
+      });
+
+      socket.on('connect_error', (error) => {
+        console.error('Socket connection error:', error); // Debug log
+        handleReconnection();
+      });
+
+      socket.on('disconnect', (reason) => {
+        console.log('Socket disconnected:', reason); // Debug log
+        if (reason !== 'io client disconnect') {
+          handleReconnection();
+        }
+      });
+
+      console.log('Connecting socket...'); // Debug log
+      socket.connect();
+      
+      // Add timeout for connection
+      setTimeout(() => {
+        if (!userInfo) {
+          console.error('Socket connection timeout'); // Debug log
+          reject(new Error('Connection timeout'));
+        }
+      }, WS_CONFIG.pingTimeout);
+
+    } catch (error) {
+      console.error('Error in socket initialization:', error); // Debug log
+      reject(error);
+    }
   });
 };
 

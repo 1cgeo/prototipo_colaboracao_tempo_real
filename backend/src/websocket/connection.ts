@@ -25,13 +25,27 @@ export class ConnectionManager {
     this.startHealthCheck();
   }
 
-  /**
-   * Handle new connection and create anonymous user
-   */
   async handleConnection(socket: Socket): Promise<void> {
     try {
+      logger.info('New socket connection attempt', {
+        id: socket.id,
+        auth: socket.handshake.auth
+      });
+
       const { user_id } = socket.handshake.auth;
+      if (!user_id) {
+        logger.error('Connection attempt without user_id', {
+          id: socket.id
+        });
+        throw new Error('Authentication failed: missing user_id');
+      }
+
       const connectionId = uuidv4();
+      logger.info('Generated connection ID', {
+        connectionId,
+        socketId: socket.id,
+        userId: user_id
+      });
 
       // Store connection information
       this.connections.set(connectionId, {
@@ -44,19 +58,24 @@ export class ConnectionManager {
       socket.data.connection_id = connectionId;
       socket.data.user_id = user_id;
 
+      logger.info('Creating anonymous user', {
+        userId: user_id,
+        connectionId
+      });
+
       // Create anonymous user
       const userInfo = await userService.createAnonymousUser(user_id);
+      
+      logger.info('Anonymous user created, sending user info', {
+        userId: userInfo.id,
+        displayName: userInfo.displayName,
+        connectionId
+      });
 
       // Send user info to client
       socket.emit('user:info', {
         user_id: userInfo.id,
-        display_name: userInfo.displayName,
-      });
-
-      logger.info('New connection established', {
-        connection_id: connectionId,
-        user_id: userInfo.id,
-        display_name: userInfo.displayName,
+        display_name: userInfo.displayName
       });
 
       // Setup event listeners
@@ -64,87 +83,104 @@ export class ConnectionManager {
 
       // Handle disconnection
       socket.on('disconnect', reason => {
+        logger.info('Socket disconnect event', {
+          reason,
+          connectionId,
+          userId: user_id
+        });
         this.handleDisconnect(socket, reason);
       });
 
       // Handle errors
       socket.on('error', error => {
+        logger.error('Socket error event', {
+          error,
+          connectionId,
+          userId: user_id
+        });
         this.handleError(socket, error);
       });
+
+      logger.info('Connection setup completed successfully', {
+        connectionId,
+        userId: user_id
+      });
     } catch (error) {
-      logger.error('Error handling new connection:', error);
+      logger.error('Error handling connection:', {
+        error,
+        socketId: socket.id,
+        auth: socket.handshake.auth
+      });
       socket.emit('error', {
         code: 'CONNECTION_ERROR',
-        message: 'Failed to establish connection',
+        message: error instanceof Error ? error.message : 'Failed to establish connection',
       });
       socket.disconnect(true);
     }
   }
 
-  /**
-   * Setup event listeners for connection monitoring
-   */
   private setupEventListeners(socket: Socket): void {
-    // Monitor activity
     const updateActivity = async () => {
       const connection = this.connections.get(socket.data.connection_id);
       if (connection) {
         connection.lastActivity = new Date();
-
-        // Update user activity
         await userService.updateUserActivity(socket.data.user_id);
       }
     };
 
-    // Update activity on any event
-    socket.onAny(updateActivity);
+    socket.onAny((eventName, ...args) => {
+      logger.debug('Socket event received', {
+        eventName,
+        args,
+        connectionId: socket.data.connection_id,
+        userId: socket.data.user_id
+      });
+      updateActivity();
+    });
 
-    // Handle ping/pong
     socket.on('ping', () => {
       updateActivity();
       socket.emit('pong');
     });
   }
 
-  /**
-   * Handle disconnection
-   */
-  private async handleDisconnect(
-    socket: Socket,
-    reason: string,
-  ): Promise<void> {
+  private async handleDisconnect(socket: Socket, reason: string): Promise<void> {
     const { connection_id, user_id } = socket.data;
     const connection = this.connections.get(connection_id);
 
-    if (!connection) return;
+    if (!connection) {
+      logger.warn('Disconnect for unknown connection', {
+        connectionId: connection_id,
+        userId: user_id,
+        reason
+      });
+      return;
+    }
 
-    logger.info('Client disconnected', {
-      connection_id,
-      user_id,
-      reason,
+    logger.info('Handling socket disconnect', {
+      connectionId: connection_id,
+      userId: user_id,
+      reason
     });
 
-    // Update connection state
     connection.state = 'disconnected';
-
-    // Clean up connection
     this.connections.delete(connection_id);
     await this.handleFinalDisconnect(socket);
   }
 
-  /**
-   * Handle final disconnection and cleanup
-   */
   private async handleFinalDisconnect(socket: Socket): Promise<void> {
     const { user_id } = socket.data;
     const roomId = this.wsState.getUserRoom(user_id);
 
     if (roomId) {
-      // Remove user from room
+      logger.info('User was in room, cleaning up', {
+        userId: user_id,
+        roomId
+      });
+
       await this.wsState.removeUserFromRoom(socket, user_id);
       await userService.leaveRoom(user_id, roomId);
 
-      // Log activity
       await activityService.logActivity(
         roomId,
         'USER_LEFT',
@@ -153,7 +189,6 @@ export class ConnectionManager {
         { reason: 'disconnected' },
       );
 
-      // Notify room of user departure
       socket.to(roomId).emit('room:user_left', {
         user_id,
         room_id: roomId,
@@ -163,9 +198,6 @@ export class ConnectionManager {
     }
   }
 
-  /**
-   * Handle connection errors
-   */
   private handleError(socket: Socket, error: Error): void {
     const errorEvent: ErrorEvent = {
       code: 'SOCKET_ERROR',
@@ -173,23 +205,19 @@ export class ConnectionManager {
       details: error.message,
     };
 
-    logger.error('Socket error:', {
-      connection_id: socket.data.connection_id,
-      user_id: socket.data.user_id,
+    logger.error('Handling socket error', {
       error,
+      connectionId: socket.data.connection_id,
+      userId: socket.data.user_id
     });
 
     socket.emit('error', errorEvent);
   }
 
-  /**
-   * Start health check interval
-   */
   private startHealthCheck(): void {
     setInterval(() => {
       const now = new Date();
       for (const [connectionId, connection] of this.connections.entries()) {
-        // Check for stale connections
         if (
           now.getTime() - connection.lastActivity.getTime() >
           this.ACTIVITY_TIMEOUT
@@ -202,16 +230,10 @@ export class ConnectionManager {
     }, this.ACTIVITY_TIMEOUT);
   }
 
-  /**
-   * Get connection state
-   */
   getConnectionState(connectionId: string): ConnectionState | undefined {
     return this.connections.get(connectionId)?.state;
   }
 
-  /**
-   * Get active connections count
-   */
   getActiveConnectionsCount(): number {
     return Array.from(this.connections.values()).filter(
       conn => conn.state === 'connected',

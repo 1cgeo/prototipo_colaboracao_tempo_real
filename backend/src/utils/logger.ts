@@ -16,12 +16,19 @@ const transports = pino.transport({
       options: { destination: join(logsDir, 'app.log') },
       level: 'info',
     },
-    // Adicionar um transport específico para cursores
     {
       target: 'pino/file',
       options: { destination: join(logsDir, 'cursor.log') },
       level: 'debug',
     },
+    {
+      target: 'pino-pretty',
+      options: {
+        colorize: true,
+        translateTime: 'SYS:standard',
+        ignore: 'pid,hostname',
+      },
+    }
   ],
 });
 
@@ -29,8 +36,36 @@ const transports = pino.transport({
 const logger = pino(
   {
     level: process.env.NODE_ENV === 'production' ? 'info' : 'debug',
+    transport: {
+      target: 'pino-pretty',
+      options: {
+        colorize: true,
+        translateTime: 'SYS:standard',
+        ignore: 'pid,hostname',
+      }
+    }
   },
   transports,
 );
 
-export default logger;
+// Override logger methods to also log to console
+const enhancedLogger = {
+  info: (msg: string, ...args: any[]) => {
+    console.log('[INFO]', msg, ...args);
+    logger.info(msg, ...args);
+  },
+  error: (msg: string, ...args: any[]) => {
+    console.error('[ERROR]', msg, ...args);
+    logger.error(msg, ...args);
+  },
+  warn: (msg: string, ...args: any[]) => {
+    console.warn('[WARN]', msg, ...args);
+    logger.warn(msg, ...args);
+  },
+  debug: (msg: string, ...args: any[]) => {
+    console.debug('[DEBUG]', msg, ...args);
+    logger.debug(msg, ...args);
+  }
+};
+
+export default enhancedLogger;

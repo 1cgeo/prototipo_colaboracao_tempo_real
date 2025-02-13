@@ -6,7 +6,7 @@ import { CollaborationProvider } from './contexts/CollaborationContext';
 import { MapProvider } from './contexts/MapContext';
 import { Layout } from './components/Layout';
 import { MapView } from './components/Map';
-import { SnackbarProvider, useSnackbar } from 'notistack';
+import { SnackbarProvider } from 'notistack';
 import { getUserId } from './services/auth';
 
 const theme = createTheme({
@@ -23,27 +23,23 @@ const theme = createTheme({
 
 const AppContent: React.FC = () => {
   const [initializing, setInitializing] = useState(true);
-  const { enqueueSnackbar } = useSnackbar();
-  const userId = getUserId(); // Get persistent userId
+  const [userId, setUserId] = useState<string | null>(null);
 
   useEffect(() => {
     const initializeUser = async () => {
       try {
-        // Authentication will be handled by CollaborationProvider
+        const id = getUserId();
+        setUserId(id);
         setInitializing(false);
       } catch (error) {
-        enqueueSnackbar('Failed to initialize user session', { 
-          variant: 'error',
-          preventDuplicate: true
-        });
-        console.error('Initialization error:', error);
+        console.error('Failed to initialize user:', error);
       }
     };
 
     initializeUser();
-  }, [enqueueSnackbar]);
+  }, []);
 
-  if (initializing) {
+  if (initializing || !userId) {
     return (
       <Box 
         sx={{ 

@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback } from 'react';
 import { initializeSocket, disconnectSocket, getSocket, wsEvents } from '../utils/api';
+import { WS_EVENTS } from '../types';
 import { 
   UserInfo,
   RoomStateEvent,
@@ -13,8 +14,7 @@ import {
   ReplyUpdateEvent,
   ReplyDeleteEvent,
   Point,
-  ErrorEvent,
-  WS_EVENTS
+  ErrorEvent
 } from '../types';
 
 interface UseWebSocketOptions {
@@ -69,6 +69,7 @@ export const useWebSocket = ({
     setState(prev => ({ ...prev, authenticating: true }));
 
     try {
+      console.log('Initializing socket connection...'); // Debug log
       await initializeSocket({ user_id });
       
       setState(prev => ({ 
@@ -76,7 +77,9 @@ export const useWebSocket = ({
         connected: true,
         authenticating: false
       }));
+      console.log('Socket connection established'); // Debug log
     } catch (error) {
+      console.error('Socket connection failed:', error); // Debug log
       setState(prev => ({ 
         ...prev, 
         connected: false,
