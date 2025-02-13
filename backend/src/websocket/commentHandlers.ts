@@ -27,7 +27,7 @@ export const handleCommentCreate = async (
 
     if (!roomId) {
       logger.warn('User tried to create comment without being in a room', {
-        userId,
+        user_id: userId,
       });
       return;
     }
@@ -49,19 +49,26 @@ export const handleCommentCreate = async (
       userId,
       displayName,
       {
-        commentId: comment.id,
+        comment_id: comment.id,
         location,
       },
     );
 
     // Broadcast to room
     socket.to(roomId).emit('comment:created', {
-      ...comment,
-      replies: [],
+      id: comment.id,
+      user_id: userId,
+      room_id: roomId,
+      content,
+      location,
+      timestamp: Date.now(),
     });
   } catch (error) {
     logger.error('Error creating comment:', error);
-    socket.emit('error', { message: 'Failed to create comment' });
+    socket.emit('error', {
+      code: 'COMMENT_CREATE_ERROR',
+      message: 'Failed to create comment',
+    });
   }
 };
 
@@ -72,26 +79,21 @@ export const handleCommentUpdate = async (
   state: WebSocketState,
 ) => {
   try {
-    const { content, version, commentId } =
-      UpdateCommentRequestSchema.parse(data);
+    const validatedData = UpdateCommentRequestSchema.parse(data);
     const roomId = state.getUserRoom(userId);
 
     if (!roomId) {
       logger.warn('User tried to update comment without being in a room', {
-        userId,
+        user_id: userId,
       });
       return;
     }
 
     const comment = await commentService.updateComment(
       roomId,
-      commentId,
+      validatedData.comment_id,
       userId,
-      {
-        content,
-        version,
-        commentId,
-      },
+      validatedData,
     );
 
     // Track activity
@@ -99,18 +101,27 @@ export const handleCommentUpdate = async (
       roomId,
       'COMMENT_UPDATED',
       userId,
-      state.getUserInfo(userId)?.displayName || 'Unknown User',
+      state.getUserInfo(userId)?.display_name || 'Unknown User',
       {
-        commentId,
-        newVersion: version + 1,
+        comment_id: validatedData.comment_id,
+        new_version: validatedData.version + 1,
       },
     );
 
     // Broadcast to room
-    socket.to(roomId).emit('comment:updated', comment);
+    socket.to(roomId).emit('comment:updated', {
+      comment_id: validatedData.comment_id,
+      user_id: userId,
+      room_id: roomId,
+      content: validatedData.content,
+      version: comment.version,
+      updated_at: comment.updated_at,
+      timestamp: Date.now(),
+    });
   } catch (error) {
     logger.error('Error updating comment:', error);
     socket.emit('error', {
+      code: 'COMMENT_UPDATE_ERROR',
       message:
         error instanceof APIError ? error.message : 'Failed to update comment',
     });
@@ -120,7 +131,7 @@ export const handleCommentUpdate = async (
 export const handleCommentDelete = async (
   socket: Socket,
   userId: string,
-  data: { commentId: string; version: number },
+  data: { comment_id: string; version: number },
   state: WebSocketState,
 ) => {
   try {
@@ -128,14 +139,14 @@ export const handleCommentDelete = async (
 
     if (!roomId) {
       logger.warn('User tried to delete comment without being in a room', {
-        userId,
+        user_id: userId,
       });
       return;
     }
 
     await commentService.deleteComment(
       roomId,
-      data.commentId,
+      data.comment_id,
       userId,
       data.version,
     );
@@ -145,19 +156,23 @@ export const handleCommentDelete = async (
       roomId,
       'COMMENT_DELETED',
       userId,
-      state.getUserInfo(userId)?.displayName || 'Unknown User',
+      state.getUserInfo(userId)?.display_name || 'Unknown User',
       {
-        commentId: data.commentId,
+        comment_id: data.comment_id,
       },
     );
 
     // Broadcast to room
     socket.to(roomId).emit('comment:deleted', {
-      commentId: data.commentId,
+      comment_id: data.comment_id,
+      user_id: userId,
+      room_id: roomId,
+      timestamp: Date.now(),
     });
   } catch (error) {
     logger.error('Error deleting comment:', error);
     socket.emit('error', {
+      code: 'COMMENT_DELETE_ERROR',
       message:
         error instanceof APIError ? error.message : 'Failed to delete comment',
     });
@@ -172,22 +187,22 @@ export const handleReplyCreate = async (
   state: WebSocketState,
 ) => {
   try {
-    const { content, commentId } = CreateReplyRequestSchema.parse(data);
+    const validatedData = CreateReplyRequestSchema.parse(data);
     const roomId = state.getUserRoom(userId);
 
     if (!roomId) {
       logger.warn('User tried to create reply without being in a room', {
-        userId,
+        user_id: userId,
       });
       return;
     }
 
     const reply = await commentService.createReply(
       roomId,
-      commentId,
+      validatedData.comment_id,
       userId,
       displayName,
-      { content, commentId },
+      validatedData,
     );
 
     // Track activity
@@ -197,19 +212,27 @@ export const handleReplyCreate = async (
       userId,
       displayName,
       {
-        commentId,
-        replyId: reply.id,
+        comment_id: validatedData.comment_id,
+        reply_id: reply.id,
       },
     );
 
     // Broadcast to room
     socket.to(roomId).emit('reply:created', {
-      commentId,
-      reply,
+      id: reply.id,
+      comment_id: validatedData.comment_id,
+      user_id: userId,
+      room_id: roomId,
+      content: validatedData.content,
+      created_at: reply.created_at,
+      timestamp: Date.now(),
     });
   } catch (error) {
     logger.error('Error creating reply:', error);
-    socket.emit('error', { message: 'Failed to create reply' });
+    socket.emit('error', {
+      code: 'REPLY_CREATE_ERROR',
+      message: 'Failed to create reply',
+    });
   }
 };
 
@@ -220,39 +243,49 @@ export const handleReplyUpdate = async (
   state: WebSocketState,
 ) => {
   try {
-    const { content, version, replyId } = UpdateReplyRequestSchema.parse(data);
+    const validatedData = UpdateReplyRequestSchema.parse(data);
     const roomId = state.getUserRoom(userId);
 
     if (!roomId) {
       logger.warn('User tried to update reply without being in a room', {
-        userId,
+        user_id: userId,
       });
       return;
     }
 
-    const reply = await commentService.updateReply(roomId, replyId, userId, {
-      content,
-      version,
-      replyId,
-    });
+    const reply = await commentService.updateReply(
+      roomId,
+      validatedData.reply_id,
+      userId,
+      validatedData,
+    );
 
     // Track activity
     await activityService.logActivity(
       roomId,
       'REPLY_UPDATED',
       userId,
-      state.getUserInfo(userId)?.displayName || 'Unknown User',
+      state.getUserInfo(userId)?.display_name || 'Unknown User',
       {
-        replyId,
-        newVersion: version + 1,
+        reply_id: validatedData.reply_id,
+        new_version: validatedData.version + 1,
       },
     );
 
     // Broadcast to room
-    socket.to(roomId).emit('reply:updated', reply);
+    socket.to(roomId).emit('reply:updated', {
+      reply_id: validatedData.reply_id,
+      user_id: userId,
+      room_id: roomId,
+      content: validatedData.content,
+      version: reply.version,
+      updated_at: reply.updated_at,
+      timestamp: Date.now(),
+    });
   } catch (error) {
     logger.error('Error updating reply:', error);
     socket.emit('error', {
+      code: 'REPLY_UPDATE_ERROR',
       message:
         error instanceof APIError ? error.message : 'Failed to update reply',
     });
@@ -262,7 +295,7 @@ export const handleReplyUpdate = async (
 export const handleReplyDelete = async (
   socket: Socket,
   userId: string,
-  data: { replyId: string; version: number },
+  data: { reply_id: string; version: number },
   state: WebSocketState,
 ) => {
   try {
@@ -270,36 +303,36 @@ export const handleReplyDelete = async (
 
     if (!roomId) {
       logger.warn('User tried to delete reply without being in a room', {
-        userId,
+        user_id: userId,
       });
       return;
     }
 
-    await commentService.deleteReply(
-      roomId,
-      data.replyId,
-      userId,
-      data.version,
-    );
+    const { reply_id, version } = data;
+    await commentService.deleteReply(roomId, reply_id, userId, version);
 
     // Track activity
     await activityService.logActivity(
       roomId,
       'REPLY_DELETED',
       userId,
-      state.getUserInfo(userId)?.displayName || 'Unknown User',
+      state.getUserInfo(userId)?.display_name || 'Unknown User',
       {
-        replyId: data.replyId,
+        reply_id,
       },
     );
 
     // Broadcast to room
     socket.to(roomId).emit('reply:deleted', {
-      replyId: data.replyId,
+      reply_id,
+      user_id: userId,
+      room_id: roomId,
+      timestamp: Date.now(),
     });
   } catch (error) {
     logger.error('Error deleting reply:', error);
     socket.emit('error', {
+      code: 'REPLY_DELETE_ERROR',
       message:
         error instanceof APIError ? error.message : 'Failed to delete reply',
     });

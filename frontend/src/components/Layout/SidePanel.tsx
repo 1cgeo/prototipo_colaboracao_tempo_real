@@ -9,20 +9,70 @@ import {
   Typography,
   Divider,
   Button,
-  CircularProgress
+  CircularProgress,
+  Avatar
 } from '@mui/material';
 import {
   Edit as EditIcon,
   Delete as DeleteIcon,
   Comment as CommentIcon,
-  Reply as ReplyIcon
+  Reply as ReplyIcon,
+  PersonAdd as JoinIcon,
+  ExitToApp as LeaveIcon
 } from '@mui/icons-material';
 import { useCollaboration } from '../../contexts/CollaborationContext';
 import { formatDistanceToNow } from 'date-fns';
 import { useActivity } from '../../hooks';
-import { UserBadge } from '../UserBadge';
+import { ActivityType } from '../../types';
+import { stringToColor } from '../../components/UserBadge';
 
 const DRAWER_WIDTH = 300;
+
+const ActivityIcon: React.FC<{ type: ActivityType }> = ({ type }) => {
+  switch (type) {
+    case 'COMMENT_CREATED':
+      return <CommentIcon />;
+    case 'COMMENT_UPDATED':
+      return <EditIcon />;
+    case 'COMMENT_DELETED':
+      return <DeleteIcon />;
+    case 'REPLY_CREATED':
+      return <ReplyIcon />;
+    case 'REPLY_UPDATED':
+      return <EditIcon />;
+    case 'REPLY_DELETED':
+      return <DeleteIcon />;
+    case 'USER_JOINED':
+      return <JoinIcon />;
+    case 'USER_LEFT':
+      return <LeaveIcon />;
+    default:
+      return null;
+  }
+};
+
+const ActivityMessage: React.FC<{ type: ActivityType }> = ({ type }) => {
+  switch (type) {
+    case 'USER_JOINED':
+      return <>joined the room</>;
+    case 'USER_LEFT':
+      return <>left the room</>;
+    case 'COMMENT_CREATED':
+      return <>added a comment</>;
+    case 'COMMENT_UPDATED':
+      return <>updated a comment</>;
+    case 'COMMENT_DELETED':
+      return <>deleted a comment</>;
+    case 'REPLY_CREATED':
+      return <>replied to a comment</>;
+    case 'REPLY_UPDATED':
+      return <>updated a reply</>;
+    case 'REPLY_DELETED':
+      return <>deleted a reply</>;
+    default:
+      return <>performed an action</>;
+  }
+};
 
 const SidePanel: React.FC = () => {
   const { currentRoom, users, getUserDisplayName } = useCollaboration();
@@ -36,48 +86,6 @@ const SidePanel: React.FC = () => {
     roomId: currentRoom?.uuid || null,
     limit: 50
   });
-
-  const getActivityIcon = (type: string) => {
-    switch (type) {
-      case 'COMMENT_CREATE':
-        return <CommentIcon />;
-      case 'COMMENT_UPDATE':
-        return <EditIcon />;
-      case 'COMMENT_DELETE':
-        return <DeleteIcon />;
-      case 'REPLY_CREATE':
-        return <ReplyIcon />;
-      case 'REPLY_UPDATE':
-        return <EditIcon />;
-      case 'REPLY_DELETE':
-        return <DeleteIcon />;
-      default:
-        return null;
-    }
-  };
-
-  const getActivityText = (activity: typeof activities[0]) => {
-    switch (activity.type) {
-      case 'ROOM_JOIN':
-        return `joined the room`;
-      case 'ROOM_LEAVE':
-        return `left the room`;
-      case 'COMMENT_CREATE':
-        return `added a comment`;
-      case 'COMMENT_UPDATE':
-        return `updated a comment`;
-      case 'COMMENT_DELETE':
-        return `deleted a comment`;
-      case 'REPLY_CREATE':
-        return `replied to a comment`;
-      case 'REPLY_UPDATE':
-        return `updated a reply`;
-      case 'REPLY_DELETE':
-        return `deleted a reply`;
-      default:
-        return `performed an action`;
-    }
-  };
 
   return (
     <Drawer
@@ -102,11 +110,21 @@ const SidePanel: React.FC = () => {
         <List>
           {users.map((user) => (
             <ListItem key={user.id}>
-              <UserBadge
-                userId={user.id}
-                displayName={user.display_name}
-                size="medium"
-                showTooltip={false}
+              <ListItemIcon>
+                <Avatar
+                  sx={{
+                    bgcolor: stringToColor(user.id),
+                    width: 32,
+                    height: 32,
+                    fontSize: '0.875rem'
+                  }}
+                >
+                  {user.display_name.charAt(0)}
+                </Avatar>
+              </ListItemIcon>
+              <ListItemText 
+                primary={user.display_name}
+                secondary={formatDistanceToNow(new Date(user.joined_at), { addSuffix: true })}
               />
             </ListItem>
           ))}
@@ -129,22 +147,31 @@ const SidePanel: React.FC = () => {
             {activities.map((activity) => (
               <ListItem key={activity.id}>
                 <ListItemIcon>
-                  {getActivityIcon(activity.type)}
+                  <ActivityIcon type={activity.type} />
                 </ListItemIcon>
                 <ListItemText
                   primary={
-                    <UserBadge
-                      userId={activity.user_id}
-                      displayName={getUserDisplayName(activity.user_id)}
-                      size="small"
-                      abbreviated
-                    />
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                      <Avatar
+                        sx={{
+                          bgcolor: stringToColor(activity.user_id),
+                          width: 24,
+                          height: 24,
+                          fontSize: '0.75rem'
+                        }}
+                      >
+                        {activity.user_name.charAt(0)}
+                      </Avatar>
+                      <Typography variant="body2">
+                        {getUserDisplayName(activity.user_id)}
+                      </Typography>
+                    </Box>
                   }
                   secondary={
                     <>
-                      {getActivityText(activity)}
+                      <ActivityMessage type={activity.type} />
                       {' • '}
-                      {formatDistanceToNow(new Date(activity.created_at))} ago
+                      {formatDistanceToNow(new Date(activity.created_at), { addSuffix: true })}
                     </>
                   }
                 />

@@ -1,5 +1,6 @@
 import { v4 as uuidv4 } from 'uuid';
-import { UserInfo, AuthenticationSuccess, mapAuthSuccessToUserInfo } from '../types/auth';
+import { UserInfo as ApiUserInfo } from '../types';
+import { UserInfo, mapAuthSuccessToUserInfo } from '../types/auth';
 
 const USER_INFO_KEY = 'userInfo';
 
@@ -7,7 +8,7 @@ const USER_INFO_KEY = 'userInfo';
 export const getUserId = (): string => {
   const stored = localStorage.getItem(USER_INFO_KEY);
   if (stored) {
-    const userInfo = JSON.parse(stored);
+    const userInfo = JSON.parse(stored) as UserInfo;
     return userInfo.userId;
   }
 
@@ -17,9 +18,8 @@ export const getUserId = (): string => {
   return newUserId;
 };
 
-// Handle successful authentication response from server
-export const handleAuthSuccess = (authData: AuthenticationSuccess): UserInfo => {
-  const userInfo = mapAuthSuccessToUserInfo(authData);
+// Store user info in local storage
+export const storeUserInfo = (apiInfo: ApiUserInfo): void => {
+  const userInfo = mapAuthSuccessToUserInfo(apiInfo);
   localStorage.setItem(USER_INFO_KEY, JSON.stringify(userInfo));
-  return userInfo;
 };

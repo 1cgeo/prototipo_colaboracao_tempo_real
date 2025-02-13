@@ -2,45 +2,45 @@ import { Point } from './index.js';
 
 export interface WebSocketEvent {
   timestamp: number;
-  roomId: string;
-  userId: string;
+  room_id: string;
+  user_id: string;
 }
 
 export interface RoomJoinEvent extends WebSocketEvent {
-  displayName: string;
+  display_name: string;
 }
 
 export interface RoomLeaveEvent extends WebSocketEvent {
-  roomId: string;
+  room_id: string;
 }
 
 export interface RoomStateEvent extends WebSocketEvent {
   users: Array<{
     id: string;
-    displayName: string;
-    joinedAt: string;
+    display_name: string;
+    joined_at: string;
   }>;
   comments: Array<{
     id: string;
     content: string;
     location: Point;
-    authorId: string;
-    authorName: string;
+    author_id: string;
+    author_name: string;
     version: number;
-    createdAt: string;
-    updatedAt: string;
+    created_at: string;
+    updated_at: string;
     replies: Array<{
       id: string;
       content: string;
-      authorId: string;
-      authorName: string;
+      author_id: string;
+      author_name: string;
       version: number;
-      createdAt: string;
-      updatedAt: string;
+      created_at: string;
+      updated_at: string;
     }>;
   }>;
   cursors: Array<{
-    userId: string;
+    user_id: string;
     location: Point;
     timestamp: number;
   }>;
@@ -51,7 +51,7 @@ export interface CursorMoveEvent extends WebSocketEvent {
 }
 
 export interface CursorUpdateEvent extends WebSocketEvent {
-  userId: string;
+  user_id: string;
   location: Point;
   timestamp: number;
 }
@@ -62,29 +62,29 @@ export interface CommentCreateEvent extends WebSocketEvent {
 }
 
 export interface CommentUpdateEvent extends WebSocketEvent {
-  commentId: string;
+  comment_id: string;
   content: string;
   version: number;
 }
 
 export interface CommentDeleteEvent extends WebSocketEvent {
-  commentId: string;
+  comment_id: string;
   version: number;
 }
 
 export interface ReplyCreateEvent extends WebSocketEvent {
-  commentId: string;
+  comment_id: string;
   content: string;
 }
 
 export interface ReplyUpdateEvent extends WebSocketEvent {
-  replyId: string;
+  reply_id: string;
   content: string;
   version: number;
 }
 
 export interface ReplyDeleteEvent extends WebSocketEvent {
-  replyId: string;
+  reply_id: string;
   version: number;
 }
 
@@ -95,25 +95,31 @@ export interface ErrorEvent {
 }
 
 export interface ConnectionEvent extends WebSocketEvent {
-  connectionId: string;
+  connection_id: string;
   reconnecting: boolean;
 }
 
+export interface AuthEvent {
+  user_id: string;
+  display_name: string;
+}
+
 export interface ServerToClientEvents {
+  'user:info': (auth: AuthEvent) => void;
   'room:state': (event: RoomStateEvent) => void;
-  'room:userJoined': (event: RoomJoinEvent) => void;
-  'room:userLeft': (event: RoomLeaveEvent) => void;
+  'room:user_joined': (event: RoomJoinEvent) => void;
+  'room:user_left': (event: RoomLeaveEvent) => void;
   'cursor:update': (event: CursorUpdateEvent) => void;
   'comment:created': (comment: CommentCreateEvent & { id: string }) => void;
   'comment:updated': (
-    comment: CommentUpdateEvent & { updatedAt: string },
+    comment: CommentUpdateEvent & { updated_at: string },
   ) => void;
-  'comment:deleted': (event: { commentId: string }) => void;
+  'comment:deleted': (event: { comment_id: string }) => void;
   'reply:created': (
-    event: ReplyCreateEvent & { id: string; createdAt: string },
+    event: ReplyCreateEvent & { id: string; created_at: string },
   ) => void;
-  'reply:updated': (event: ReplyUpdateEvent & { updatedAt: string }) => void;
-  'reply:deleted': (event: { replyId: string }) => void;
+  'reply:updated': (event: ReplyUpdateEvent & { updated_at: string }) => void;
+  'reply:deleted': (event: { reply_id: string }) => void;
   error: (event: ErrorEvent) => void;
   reconnect: (event: ConnectionEvent) => void;
   disconnect: (reason: string) => void;

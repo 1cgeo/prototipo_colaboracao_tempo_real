@@ -21,23 +21,23 @@ export interface APIErrorResponse {
   details?: ErrorDetails;
 }
 
+export interface ErrorEvent {
+  code: string;
+  message: string;
+  details?: ErrorDetails;
+}
+
 export type APIResponse<T> = APISuccessResponse<T> | APIErrorResponse;
 
 // Authentication types
 export interface AuthConfig {
   user_id: string;
-  display_name: string;
 }
 
-export interface AuthenticationSuccess {
+export interface UserInfo {
   user_id: string;
   display_name: string;
-}
-
-export interface AuthenticationError {
-  code: string;
-  message: string;
-  details?: ErrorDetails;
+  room_id?: string | null;
 }
 
 // Basic geometry types
@@ -85,12 +85,15 @@ export interface RoomUpdateInput {
   description?: string;
 }
 
+// WebSocket Events
 // Room events
 export interface RoomStateEvent {
   users: User[];
   comments: Comment[];
   cursors: CursorPosition[];
   timestamp: number;
+  room_id: string;
+  user_id: string;
 }
 
 export interface RoomJoinEvent {
@@ -103,7 +106,7 @@ export interface RoomJoinEvent {
 export interface RoomLeaveEvent {
   room_id: string;
   user_id: string;
-  display_name: string;
+  display_name: string | null;
   timestamp: number;
 }
 
@@ -146,6 +149,7 @@ export interface CommentUpdateInput {
 
 export interface CommentEvent {
   user_id: string;
+  room_id: string;
   comment_id: string;
   content: string;
   version: number;
@@ -182,6 +186,7 @@ export interface ReplyUpdateInput {
 
 export interface ReplyEvent {
   user_id: string;
+  room_id: string;
   comment_id: string;
   reply_id: string;
   content: string;
@@ -197,14 +202,14 @@ export interface ReplyDeleteEvent extends Omit<ReplyEvent, 'content'> {}
 
 // Activity types
 export type ActivityType = 
-  | 'ROOM_JOIN'
-  | 'ROOM_LEAVE'
-  | 'COMMENT_CREATE'
-  | 'COMMENT_UPDATE'
-  | 'COMMENT_DELETE'
-  | 'REPLY_CREATE'
-  | 'REPLY_UPDATE'
-  | 'REPLY_DELETE';
+  | 'COMMENT_CREATED'
+  | 'COMMENT_UPDATED'
+  | 'COMMENT_DELETED'
+  | 'REPLY_CREATED'
+  | 'REPLY_UPDATED'
+  | 'REPLY_DELETED'
+  | 'USER_JOINED'
+  | 'USER_LEFT';
 
 export interface ActivityMetadata {
   comment_id?: string;
@@ -212,8 +217,8 @@ export interface ActivityMetadata {
   content?: string;
   location?: Point;
   version?: number;
-  user_id?: string;
   room_id?: string;
+  user_id?: string;
 }
 
 export interface Activity {
@@ -225,37 +230,40 @@ export interface Activity {
   created_at: string;
 }
 
-// API Routes
-export const API_ROUTES = {
-  // Room Management
-  listRooms: '/api/maps',
-  createRoom: '/api/maps',
-  getRoom: (uuid: string) => `/api/maps/${uuid}`,
-  updateRoom: (uuid: string) => `/api/maps/${uuid}`,
-  deleteRoom: (uuid: string) => `/api/maps/${uuid}`,
-
-  // Comments and Replies
-  listComments: (roomId: string, bounds?: MapBounds) => {
-    const url = `/api/maps/${roomId}/comments`;
-    if (bounds) {
-      return `${url}?bounds=${encodeURIComponent(JSON.stringify(bounds))}`;
-    }
-    return url;
-  },
-  createComment: (roomId: string) => `/api/maps/${roomId}/comments`,
-  updateComment: (roomId: string, commentId: string) => 
-    `/api/maps/${roomId}/comments/${commentId}`,
-  deleteComment: (roomId: string, commentId: string) => 
-    `/api/maps/${roomId}/comments/${commentId}`,
-  createReply: (roomId: string, commentId: string) => 
-    `/api/maps/${roomId}/comments/${commentId}/replies`,
-  updateReply: (roomId: string, commentId: string, replyId: string) => 
-    `/api/maps/${roomId}/comments/${commentId}/replies/${replyId}`,
-  deleteReply: (roomId: string, commentId: string, replyId: string) => 
-    `/api/maps/${roomId}/comments/${commentId}/replies/${replyId}`,
-
-  // Activity Logs
-  getActivityLog: (roomId: string) => `/api/maps/${roomId}/activity`,
-  getUserActivity: (roomId: string, userId: string) => 
-    `/api/maps/${roomId}/activity/${userId}`,
+// WebSocket event names
+export const WS_EVENTS = {
+  // User events
+  USER_INFO: 'user:info',
+  
+  // Room events
+  ROOM_JOIN: 'room:join',
+  ROOM_LEAVE: 'room:leave',
+  ROOM_STATE: 'room:state',
+  ROOM_USER_JOINED: 'room:user_joined',
+  ROOM_USER_LEFT: 'room:user_left',
+  
+  // Cursor events
+  CURSOR_MOVE: 'cursor:move',
+  CURSOR_UPDATE: 'cursor:update',
+  
+  // Comment events
+  COMMENT_CREATE: 'comment:create',
+  COMMENT_UPDATE: 'comment:update',
+  COMMENT_DELETE: 'comment:delete',
+  COMMENT_CREATED: 'comment:created',
+  COMMENT_UPDATED: 'comment:updated',
+  COMMENT_DELETED: 'comment:deleted',
+  
+  // Reply events
+  REPLY_CREATE: 'reply:create',
+  REPLY_UPDATE: 'reply:update',
+  REPLY_DELETE: 'reply:delete',
+  REPLY_CREATED: 'reply:created',
+  REPLY_UPDATED: 'reply:updated',
+  REPLY_DELETED: 'reply:deleted',
+  
+  // System events
+  CONNECT: 'connect',
+  DISCONNECT: 'disconnect',
+  ERROR: 'error'
 };

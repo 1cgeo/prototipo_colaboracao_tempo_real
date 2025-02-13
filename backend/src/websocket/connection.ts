@@ -26,12 +26,11 @@ export class ConnectionManager {
   }
 
   /**
-   * Handle new connection
+   * Handle new connection and create anonymous user
    */
   async handleConnection(socket: Socket): Promise<void> {
     try {
-      const { user_id, displayName } = socket.handshake.auth;
-      console.log(user_id, displayName)
+      const { user_id } = socket.handshake.auth;
       const connectionId = uuidv4();
 
       // Store connection information
@@ -42,13 +41,22 @@ export class ConnectionManager {
       });
 
       // Attach connection ID to socket for future reference
-      socket.data.connectionId = connectionId;
-      socket.data.userId = user_id;
+      socket.data.connection_id = connectionId;
+      socket.data.user_id = user_id;
+
+      // Create anonymous user
+      const userInfo = await userService.createAnonymousUser(user_id);
+
+      // Send user info to client
+      socket.emit('user:info', {
+        user_id: userInfo.id,
+        display_name: userInfo.displayName,
+      });
 
       logger.info('New connection established', {
-        connectionId,
-        user_id,
-        displayName,
+        connection_id: connectionId,
+        user_id: userInfo.id,
+        display_name: userInfo.displayName,
       });
 
       // Setup event listeners
@@ -79,15 +87,12 @@ export class ConnectionManager {
   private setupEventListeners(socket: Socket): void {
     // Monitor activity
     const updateActivity = async () => {
-      const connection = this.connections.get(socket.data.connectionId);
+      const connection = this.connections.get(socket.data.connection_id);
       if (connection) {
         connection.lastActivity = new Date();
 
-        // Update user activity if in a room
-        const roomId = this.wsState.getUserRoom(socket.data.userId);
-        if (roomId) {
-          await userService.updateUserActivity(socket.data.userId, roomId);
-        }
+        // Update user activity
+        await userService.updateUserActivity(socket.data.user_id);
       }
     };
 
@@ -108,14 +113,14 @@ export class ConnectionManager {
     socket: Socket,
     reason: string,
   ): Promise<void> {
-    const { connectionId, userId } = socket.data;
-    const connection = this.connections.get(connectionId);
+    const { connection_id, user_id } = socket.data;
+    const connection = this.connections.get(connection_id);
 
     if (!connection) return;
 
     logger.info('Client disconnected', {
-      connectionId,
-      userId,
+      connection_id,
+      user_id,
       reason,
     });
 
@@ -123,35 +128,37 @@ export class ConnectionManager {
     connection.state = 'disconnected';
 
     // Clean up connection
-    this.connections.delete(connectionId);
+    this.connections.delete(connection_id);
     await this.handleFinalDisconnect(socket);
   }
 
   /**
-   * Handle final disconnection
+   * Handle final disconnection and cleanup
    */
   private async handleFinalDisconnect(socket: Socket): Promise<void> {
-    const { userId } = socket.data;
-    const roomId = this.wsState.getUserRoom(userId);
+    const { user_id } = socket.data;
+    const roomId = this.wsState.getUserRoom(user_id);
 
     if (roomId) {
-      await this.wsState.removeUserFromRoom(socket, userId);
-      await userService.removeUserFromRoom(userId, roomId);
+      // Remove user from room
+      await this.wsState.removeUserFromRoom(socket, user_id);
+      await userService.leaveRoom(user_id, roomId);
 
       // Log activity
       await activityService.logActivity(
         roomId,
         'USER_LEFT',
-        userId,
-        this.wsState.getUserInfo(userId)?.displayName || 'Unknown User',
+        user_id,
+        this.wsState.getUserInfo(user_id)?.display_name || 'Unknown User',
         { reason: 'disconnected' },
       );
 
       // Notify room of user departure
-      socket.to(roomId).emit('room:userLeft', {
-        userId,
-        displayName: this.wsState.getUserInfo(userId)?.displayName,
-        timestamp: new Date().toISOString(),
+      socket.to(roomId).emit('room:user_left', {
+        user_id,
+        room_id: roomId,
+        display_name: this.wsState.getUserInfo(user_id)?.display_name,
+        timestamp: Date.now(),
       });
     }
   }
@@ -167,8 +174,8 @@ export class ConnectionManager {
     };
 
     logger.error('Socket error:', {
-      connectionId: socket.data.connectionId,
-      userId: socket.data.userId,
+      connection_id: socket.data.connection_id,
+      user_id: socket.data.user_id,
       error,
     });
 

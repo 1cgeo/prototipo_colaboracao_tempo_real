@@ -2,15 +2,11 @@ import React, { createContext, useContext, useState, useCallback } from 'react';
 import { Socket } from 'socket.io-client';
 import { 
   Room, RoomDetails, User, Point, Activity,
-  CursorPosition
+  CursorPosition, UserInfo, RoomJoinEvent,
+  RoomStateEvent, CursorMoveEvent
 } from '../types';
-import { 
-  AuthenticationSuccess, 
-  AuthenticationError,
-  UserInfo
-} from '../types/auth';
 import { useWebSocket, useActivity, useRoom } from '../hooks';
-import { handleAuthSuccess } from '../services/auth';
+import { storeUserInfo } from '../services/auth';
 
 interface CollaborationContextState {
   socket: Socket | null;
@@ -57,19 +53,25 @@ export const CollaborationProvider: React.FC<CollaborationProviderProps> = ({
   const [error, setError] = useState<Error | null>(null);
   const [userNamesCache, setUserNamesCache] = useState<Record<string, string>>({});
 
-  // Handle successful authentication
-  const handleAuthenticationSuccess = useCallback((data: AuthenticationSuccess) => {
-    const userInfo = handleAuthSuccess(data);
-    setCurrentUser(userInfo);
+  // Handle user info received
+  const handleUserInfo = useCallback((info: UserInfo) => {
+    setCurrentUser(info);
     setUserNamesCache(prev => ({
       ...prev,
-      [userInfo.userId]: userInfo.displayName
+      [info.user_id]: info.display_name
     }));
+    storeUserInfo(info);
   }, []);
 
-  // Handle authentication error
-  const handleAuthError = useCallback((error: AuthenticationError) => {
-    setError(new Error(error.message));
+  // Handle room state received
+  const handleRoomState = useCallback((event: RoomStateEvent) => {
+    // Update user names cache with all users from room
+    event.users.forEach(user => {
+      setUserNamesCache(prev => ({
+        ...prev,
+        [user.id]: user.display_name
+      }));
+    });
   }, []);
 
   // Initialize useRoom hook
@@ -90,7 +92,6 @@ export const CollaborationProvider: React.FC<CollaborationProviderProps> = ({
     getUserCursor
   } = useRoom({
     userId,
-    displayName: currentUser?.displayName || '',
     onError: setError
   });
 
@@ -100,15 +101,23 @@ export const CollaborationProvider: React.FC<CollaborationProviderProps> = ({
     connected: wsConnected,
     authenticating,
   } = useWebSocket({
-    userId,
-    displayName: currentUser?.displayName || '',
-    onAuthSuccess: handleAuthenticationSuccess,
-    onAuthError: handleAuthError,
-    onJoin: (event) => {
+    user_id: userId,
+    onUserInfo: handleUserInfo,
+    onRoomState: handleRoomState,
+    onJoin: (event: RoomJoinEvent) => {
       setUserNamesCache(prev => ({
         ...prev,
         [event.user_id]: event.display_name
       }));
+    },
+    onCursorMove: (event: CursorMoveEvent) => {
+      if (currentRoom?.uuid === event.room_id) {
+        // Handle cursor updates only for current room
+        setUserNamesCache(prev => ({
+          ...prev,
+          [event.user_id]: event.user_id in prev ? prev[event.user_id] : 'Unknown User'
+        }));
+      }
     },
     onError: setError
   });
@@ -136,7 +145,9 @@ export const CollaborationProvider: React.FC<CollaborationProviderProps> = ({
 
   // Leave room with cleanup
   const leaveRoom = () => {
-    roomLeave();
+    if (currentRoom) {
+      roomLeave();
+    }
   };
 
   // Update cursor position

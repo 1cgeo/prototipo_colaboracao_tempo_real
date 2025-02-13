@@ -16,7 +16,7 @@ export const handleCursorMove = async (
 
     if (!roomId) {
       wsLogger.warn('User tried to move cursor without being in a room', {
-        userId,
+        user_id: userId,
       });
       return;
     }
@@ -25,7 +25,8 @@ export const handleCursorMove = async (
     cursorThrottler.updateCursor(userId, roomId, location, update => {
       // Broadcast to room
       socket.to(roomId).emit('cursor:update', {
-        userId,
+        user_id: userId,
+        room_id: roomId,
         location: update.location,
         timestamp: update.timestamp,
       });

@@ -20,7 +20,7 @@ export type CreateMapRoomRequest = z.infer<typeof CreateMapRoomRequestSchema>;
 export const CreateCommentRequestSchema = z.object({
   content: z.string().min(1),
   location: PointSchema,
-  commentId: z.string().uuid().optional(),
+  comment_id: z.string().uuid().optional(),
 });
 
 export type CreateCommentRequest = z.infer<typeof CreateCommentRequestSchema>;
@@ -28,7 +28,7 @@ export type CreateCommentRequest = z.infer<typeof CreateCommentRequestSchema>;
 export const UpdateCommentRequestSchema = z.object({
   content: z.string().min(1),
   version: z.number().int().min(1),
-  commentId: z.string().uuid(),
+  comment_id: z.string().uuid(),
 });
 
 export type UpdateCommentRequest = z.infer<typeof UpdateCommentRequestSchema>;
@@ -36,7 +36,7 @@ export type UpdateCommentRequest = z.infer<typeof UpdateCommentRequestSchema>;
 // Request types for replies
 export const CreateReplyRequestSchema = z.object({
   content: z.string().min(1),
-  commentId: z.string().uuid(),
+  comment_id: z.string().uuid(),
 });
 
 export type CreateReplyRequest = z.infer<typeof CreateReplyRequestSchema>;
@@ -44,21 +44,18 @@ export type CreateReplyRequest = z.infer<typeof CreateReplyRequestSchema>;
 export const UpdateReplyRequestSchema = z.object({
   content: z.string().min(1),
   version: z.number().int().min(1),
-  replyId: z.string().uuid(),
+  reply_id: z.string().uuid(),
 });
 
 export type UpdateReplyRequest = z.infer<typeof UpdateReplyRequestSchema>;
 
 // Activity types
-export const ActivityTypeEnum = z.enum([
-  'COMMENT_CREATED',
-  'COMMENT_UPDATED',
-  'COMMENT_DELETED',
-  'REPLY_CREATED',
-  'REPLY_UPDATED',
-  'REPLY_DELETED',
-  'USER_JOINED',
-  'USER_LEFT',
-]);
-
-export type ActivityType = z.infer<typeof ActivityTypeEnum>;
+export type ActivityType =
+  | 'COMMENT_CREATED'
+  | 'COMMENT_UPDATED'
+  | 'COMMENT_DELETED'
+  | 'REPLY_CREATED'
+  | 'REPLY_UPDATED'
+  | 'REPLY_DELETED'
+  | 'USER_JOINED'
+  | 'USER_LEFT';

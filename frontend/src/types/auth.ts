@@ -1,3 +1,5 @@
+import { UserInfo as ApiUserInfo } from './index';
+
 export interface AuthConfig {
     user_id: string;
   }
@@ -29,7 +31,7 @@ export interface AuthConfig {
   }
   
   // Mapping function to convert from backend to frontend format
-  export const mapAuthSuccessToUserInfo = (auth: AuthenticationSuccess): UserInfo => ({
-    userId: auth.user_id,
-    displayName: auth.display_name
+  export const mapAuthSuccessToUserInfo = (apiInfo: ApiUserInfo): UserInfo => ({
+    userId: apiInfo.user_id,
+    displayName: apiInfo.display_name
   });

@@ -2,14 +2,13 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { 
   Room, RoomDetails, RoomCreateInput, RoomUpdateInput, 
   User, RoomStateEvent, CursorPosition, Point,
-  RoomJoinEvent, RoomLeaveEvent
+  RoomJoinEvent, RoomLeaveEvent, CursorMoveEvent
 } from '../types';
 import { roomApi } from '../utils/api';
-import useWebSocket from './useWebSocket';
+import { useWebSocket } from './useWebSocket';
 
 interface UseRoomOptions {
   userId: string;
-  displayName: string;
   onError?: (error: Error) => void;
 }
 
@@ -33,15 +32,14 @@ const initialState: RoomState = {
   connected: false
 };
 
-const useRoom = ({ userId, displayName, onError }: UseRoomOptions) => {
+export const useRoom = ({ userId, onError }: UseRoomOptions) => {
   const [state, setState] = useState<RoomState>(initialState);
   const reconnectAttemptsRef = useRef(0);
   const maxReconnectAttempts = 5;
 
   // WebSocket integration
-  const { joinRoom: wsJoinRoom, leaveRoom: wsLeaveRoom, updateCursor } = useWebSocket({
-    userId,
-    displayName,
+  const { joinRoom: wsJoinRoom, leaveRoom: wsLeaveRoom, updateCursor, connected } = useWebSocket({
+    user_id: userId,
     onRoomState: (event: RoomStateEvent) => {
       setState(prev => ({
         ...prev,
@@ -79,7 +77,7 @@ const useRoom = ({ userId, displayName, onError }: UseRoomOptions) => {
         };
       });
     },
-    onCursorMove: (event) => {
+    onCursorMove: (event: CursorMoveEvent) => {
       setState(prev => ({
         ...prev,
         cursors: {
@@ -92,7 +90,7 @@ const useRoom = ({ userId, displayName, onError }: UseRoomOptions) => {
         }
       }));
     },
-    onError: (error) => {
+    onError: (error: Error) => {
       setState(prev => ({ ...prev, error }));
       onError?.(error);
     },
@@ -139,7 +137,7 @@ const useRoom = ({ userId, displayName, onError }: UseRoomOptions) => {
 
   // Join room with state synchronization
   const joinRoom = useCallback(async (roomId: string) => {
-    if (!state.connected) {
+    if (!connected) {
       throw new Error('WebSocket not connected');
     }
 
@@ -153,7 +151,7 @@ const useRoom = ({ userId, displayName, onError }: UseRoomOptions) => {
       onError?.(err);
       throw err;
     }
-  }, [state.connected, loadRoom, wsJoinRoom, onError]);
+  }, [connected, loadRoom, wsJoinRoom, onError]);
 
   // Leave room and cleanup state
   const leaveRoom = useCallback(() => {
@@ -239,7 +237,7 @@ const useRoom = ({ userId, displayName, onError }: UseRoomOptions) => {
       coordinates
     };
 
-    updateCursor(state.currentRoom.uuid, location);
+    updateCursor(location);
   }, [state.currentRoom, updateCursor]);
 
   // Utility functions
@@ -257,8 +255,8 @@ const useRoom = ({ userId, displayName, onError }: UseRoomOptions) => {
 
   // Update connection state effect
   useEffect(() => {
-    setState(prev => ({ ...prev, connected: state.connected }));
-  }, [state.connected]);
+    setState(prev => ({ ...prev, connected }));
+  }, [connected]);
 
   // Cleanup on unmount
   useEffect(() => {
@@ -287,5 +285,3 @@ const useRoom = ({ userId, displayName, onError }: UseRoomOptions) => {
     getUserCursor
   };
 };
-
-export default useRoom;

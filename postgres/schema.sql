@@ -28,18 +28,15 @@ CREATE TABLE map_rooms (
 CREATE TABLE anonymous_users (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     display_name VARCHAR(255) NOT NULL,
-    map_room_uuid UUID REFERENCES map_rooms(uuid) ON DELETE CASCADE,
+    map_room_uuid UUID REFERENCES map_rooms(uuid) ON DELETE SET NULL,
     joined_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    last_seen_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    UNIQUE (display_name, map_room_uuid)
+    last_seen_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
 -- Spatial Comments table with PostGIS
 CREATE TABLE spatial_comments (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     map_room_uuid UUID REFERENCES map_rooms(uuid) ON DELETE CASCADE,
-    -- Using GEOMETRY instead of GEOGRAPHY since it's faster for distance calculations
-    -- and we're working with real-time updates in a relatively small area
     location GEOMETRY(POINT, 4326) NOT NULL,
     content TEXT NOT NULL,
     author_id UUID REFERENCES anonymous_users(id) ON DELETE SET NULL,
@@ -80,13 +77,11 @@ CREATE INDEX idx_map_rooms_updated_at ON map_rooms(updated_at);
 -- Anonymous users indexes
 CREATE INDEX idx_anonymous_users_map_room ON anonymous_users(map_room_uuid);
 CREATE INDEX idx_anonymous_users_last_seen ON anonymous_users(last_seen_at);
+CREATE INDEX idx_anonymous_users_id_room ON anonymous_users(id, map_room_uuid) WHERE map_room_uuid IS NOT NULL;
 
 -- Spatial comments indexes
--- GiST index for spatial queries (nearest neighbor searches, bounding box queries)
 CREATE INDEX idx_spatial_comments_location ON spatial_comments USING GIST(location);
--- B-tree index for map room lookups
 CREATE INDEX idx_spatial_comments_map_room ON spatial_comments(map_room_uuid);
--- B-tree index for version control operations
 CREATE INDEX idx_spatial_comments_version ON spatial_comments(id, version);
 
 -- Comment replies indexes
@@ -163,21 +158,38 @@ CREATE TRIGGER update_comment_replies_updated_at
 CREATE OR REPLACE FUNCTION update_active_users_count()
 RETURNS TRIGGER AS $$
 BEGIN
-    IF TG_OP = 'INSERT' THEN
+    -- On insert, only update count if map_room_uuid is not null
+    IF TG_OP = 'INSERT' AND NEW.map_room_uuid IS NOT NULL THEN
         UPDATE map_rooms 
         SET active_users_count = active_users_count + 1
         WHERE uuid = NEW.map_room_uuid;
-    ELSIF TG_OP = 'DELETE' THEN
+    -- On delete, only update count if map_room_uuid was not null
+    ELSIF TG_OP = 'DELETE' AND OLD.map_room_uuid IS NOT NULL THEN
         UPDATE map_rooms 
         SET active_users_count = GREATEST(0, active_users_count - 1)
         WHERE uuid = OLD.map_room_uuid;
+    -- On update, handle room changes
+    ELSIF TG_OP = 'UPDATE' AND 
+          (OLD.map_room_uuid IS DISTINCT FROM NEW.map_room_uuid) THEN
+        -- Decrement old room if exists
+        IF OLD.map_room_uuid IS NOT NULL THEN
+            UPDATE map_rooms 
+            SET active_users_count = GREATEST(0, active_users_count - 1)
+            WHERE uuid = OLD.map_room_uuid;
+        END IF;
+        -- Increment new room if exists
+        IF NEW.map_room_uuid IS NOT NULL THEN
+            UPDATE map_rooms 
+            SET active_users_count = active_users_count + 1
+            WHERE uuid = NEW.map_room_uuid;
+        END IF;
     END IF;
     RETURN NULL;
 END;
 $$ LANGUAGE plpgsql;
 
--- Trigger for maintaining active users count
+-- Create trigger for maintaining active users count
 CREATE TRIGGER maintain_active_users_count
-    AFTER INSERT OR DELETE ON anonymous_users
+    AFTER INSERT OR UPDATE OR DELETE ON anonymous_users
     FOR EACH ROW
     EXECUTE FUNCTION update_active_users_count();

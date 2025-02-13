@@ -3,14 +3,14 @@ import { db } from '../database/index.js';
 import logger from '../utils/logger.js';
 
 interface UserInfo {
-  displayName: string;
-  roomId: string;
+  display_name: string;
+  room_id: string | null;
   socket: Socket;
 }
 
 export interface UserPublicInfo {
-  displayName: string;
-  roomId: string;
+  display_name: string;
+  room_id: string | null;
 }
 
 export class WebSocketState {
@@ -35,22 +35,26 @@ export class WebSocketState {
     this.connectedUsers.get(roomId)?.add(userId);
 
     // Store user info
-    this.userInfo.set(userId, { displayName, roomId, socket });
+    this.userInfo.set(userId, {
+      display_name: displayName,
+      room_id: roomId,
+      socket,
+    });
 
     // Join socket.io room
     await socket.join(roomId);
 
-    // Update database
+    // Update database - apenas atualiza o room_id
     await db.tx(async t => {
-      // Add/update user
+      // Update user's room
       await t.none(
         `
-        INSERT INTO anonymous_users (id, display_name, map_room_uuid, joined_at, last_seen_at)
-        VALUES ($1, $2, $3, NOW(), NOW())
-        ON CONFLICT (id) DO UPDATE
-        SET last_seen_at = NOW()
-      `,
-        [userId, displayName, roomId],
+        UPDATE anonymous_users
+        SET map_room_uuid = $1,
+            last_seen_at = NOW()
+        WHERE id = $2
+        `,
+        [roomId, userId],
       );
 
       // Log activity
@@ -61,24 +65,20 @@ export class WebSocketState {
       `,
         [roomId, 'USER_JOINED', userId, displayName],
       );
+    });
 
-      // Update room active users count
-      await t.none(
-        `
-        UPDATE map_rooms
-        SET active_users_count = active_users_count + 1
-        WHERE uuid = $1
-      `,
-        [roomId],
-      );
+    logger.info('User added to room', {
+      userId,
+      roomId,
+      displayName,
     });
   }
 
   async removeUserFromRoom(socket: Socket, userId: string) {
     const userInfo = this.userInfo.get(userId);
-    if (!userInfo) return;
+    if (!userInfo || !userInfo.room_id) return;
 
-    const { roomId, displayName } = userInfo;
+    const roomId = userInfo.room_id;
 
     // Remove from room state
     this.connectedUsers.get(roomId)?.delete(userId);
@@ -86,21 +86,25 @@ export class WebSocketState {
       this.connectedUsers.delete(roomId);
     }
 
-    // Remove user info
-    this.userInfo.delete(userId);
+    // Update user info - mantém o usuário mas remove a sala
+    this.userInfo.set(userId, {
+      ...userInfo,
+      room_id: null,
+    });
 
     // Leave socket.io room
     await socket.leave(roomId);
 
     // Update database
     await db.tx(async t => {
-      // Update user last seen
+      // Update user's room to null
       await t.none(
         `
         UPDATE anonymous_users
-        SET last_seen_at = NOW()
+        SET map_room_uuid = NULL,
+            last_seen_at = NOW()
         WHERE id = $1
-      `,
+        `,
         [userId],
       );
 
@@ -110,33 +114,29 @@ export class WebSocketState {
         INSERT INTO activity_logs (map_room_uuid, activity_type, user_id, user_name)
         VALUES ($1, $2, $3, $4)
       `,
-        [roomId, 'USER_LEFT', userId, displayName],
+        [roomId, 'USER_LEFT', userId, userInfo.display_name],
       );
+    });
 
-      // Update room active users count
-      await t.none(
-        `
-        UPDATE map_rooms
-        SET active_users_count = GREATEST(0, active_users_count - 1)
-        WHERE uuid = $1
-      `,
-        [roomId],
-      );
+    logger.info('User removed from room', {
+      userId,
+      roomId,
+      displayName: userInfo.display_name,
     });
   }
 
-  getUserRoom(userId: string): string | undefined {
-    return this.userInfo.get(userId)?.roomId;
+  getUserRoom(userId: string): string | null {
+    return this.userInfo.get(userId)?.room_id || null;
   }
 
   getUserInfo(userId: string): UserPublicInfo | undefined {
     const info = this.userInfo.get(userId);
     if (!info) return undefined;
-    const publicInfo: UserPublicInfo = {
-      displayName: info.displayName,
-      roomId: info.roomId,
+
+    return {
+      display_name: info.display_name,
+      room_id: info.room_id,
     };
-    return publicInfo;
   }
 
   async getRoomState(roomId: string) {
@@ -145,7 +145,10 @@ export class WebSocketState {
         // Get active users
         db.any(
           `
-          SELECT id, display_name
+          SELECT 
+            id,
+            display_name,
+            joined_at as "joined_at"
           FROM anonymous_users
           WHERE map_room_uuid = $1
             AND last_seen_at > NOW() - INTERVAL '5 minutes'
@@ -156,7 +159,9 @@ export class WebSocketState {
         // Get comments with replies
         db.any(
           `
-          SELECT c.*, 
+          SELECT 
+            c.*,
+            ST_AsGeoJSON(c.location)::json as location,
             (
               SELECT json_agg(r.*)
               FROM comment_replies r
@@ -171,7 +176,10 @@ export class WebSocketState {
         // Get cursor positions
         db.any(
           `
-          SELECT user_id, ST_AsGeoJSON(location) as location
+          SELECT 
+            user_id,
+            ST_AsGeoJSON(location)::json as location,
+            updated_at
           FROM cursor_positions
           WHERE map_room_uuid = $1
             AND updated_at > NOW() - INTERVAL '1 minute'
@@ -183,7 +191,10 @@ export class WebSocketState {
       return {
         users,
         comments,
-        cursors,
+        cursors: cursors.map(c => ({
+          ...c,
+          timestamp: new Date(c.updated_at).getTime(),
+        })),
       };
     } catch (error) {
       logger.error('Error getting room state:', error);
@@ -191,13 +202,13 @@ export class WebSocketState {
     }
   }
 
-  getRoomUsers(roomId: string): { userId: string; displayName: string }[] {
+  getRoomUsers(roomId: string): { user_id: string; display_name: string }[] {
     const users = this.connectedUsers.get(roomId) || new Set();
     return Array.from(users).map(userId => {
       const info = this.userInfo.get(userId);
       return {
-        userId,
-        displayName: info?.displayName || 'Unknown User',
+        user_id: userId,
+        display_name: info?.display_name || 'Unknown User',
       };
     });
   }

@@ -5,16 +5,18 @@ import {
   Typography,
   Box,
   Chip,
-  Button
+  Button,
+  Avatar
 } from '@mui/material';
 import {
   ExitToApp as ExitIcon,
   People as PeopleIcon
 } from '@mui/icons-material';
 import { useCollaboration } from '../../contexts/CollaborationContext';
+import { stringToColor } from '../../components/UserBadge';
 
 const TopBar: React.FC = () => {
-  const { currentRoom, users, leaveRoom } = useCollaboration();
+  const { currentRoom, currentUser, users, leaveRoom } = useCollaboration();
 
   return (
     <AppBar position="fixed">
@@ -38,6 +40,24 @@ const TopBar: React.FC = () => {
                 label={`${users.length} online`}
                 color="secondary"
                 size="small"
+              />
+            </Box>
+
+            {/* Current User */}
+            <Box sx={{ mr: 2 }}>
+              <Chip
+                avatar={
+                  <Avatar
+                    sx={{
+                      bgcolor: currentUser ? stringToColor(currentUser.user_id) : 'grey'
+                    }}
+                  >S
+                    {currentUser?.display_name.charAt(0)}
+                  </Avatar>
+                }
+                label={currentUser?.display_name || 'Unknown'}
+                variant="outlined"
+                color="default"
               />
             </Box>
 

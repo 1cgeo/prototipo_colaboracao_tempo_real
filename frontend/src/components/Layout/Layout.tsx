@@ -1,5 +1,5 @@
 import React from 'react';
-import { Box, CssBaseline } from '@mui/material';
+import { Box, CssBaseline, CircularProgress } from '@mui/material';
 import { useCollaboration } from '../../contexts/CollaborationContext';
 import TopBar from './TopBar';
 import SidePanel from './SidePanel';
@@ -10,7 +10,23 @@ interface LayoutProps {
 }
 
 const Layout: React.FC<LayoutProps> = ({ children }) => {
-  const { currentRoom } = useCollaboration();
+  const { currentRoom, authenticating, currentUser } = useCollaboration();
+
+  // Mostra loading enquanto autentica
+  if (authenticating || !currentUser) {
+    return (
+      <Box 
+        sx={{ 
+          height: '100vh', 
+          display: 'flex', 
+          alignItems: 'center', 
+          justifyContent: 'center' 
+        }}
+      >
+        <CircularProgress />
+      </Box>
+    );
+  }
 
   return (
     <Box sx={{ display: 'flex', height: '100vh', width: '100vw' }}>

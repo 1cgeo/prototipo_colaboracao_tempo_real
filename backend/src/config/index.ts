@@ -21,7 +21,7 @@ const configSchema = z.object({
 
   // WebSocket
   ws: z.object({
-    path: z.string().default('/socket'),
+    path: z.string().default('/socket.io'),
     pingTimeout: z.coerce.number().default(10000),
     pingInterval: z.coerce.number().default(3000),
   }),

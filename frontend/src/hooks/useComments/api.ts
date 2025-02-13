@@ -1,4 +1,4 @@
-import { API_ROUTES } from '../../types';
+import { API_ROUTES } from '../../types/api-routes';
 import { 
   Comment, 
   CommentCreateInput, 

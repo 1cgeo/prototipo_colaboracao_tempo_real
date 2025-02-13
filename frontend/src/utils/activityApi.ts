@@ -1,5 +1,5 @@
 import { Activity } from '../types';
-import { API_ROUTES } from '../types';
+import { API_ROUTES } from '../types/api-routes';
 
 interface GetLogOptions {
   before?: string;

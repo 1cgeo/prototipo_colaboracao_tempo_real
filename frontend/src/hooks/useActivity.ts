@@ -124,14 +124,14 @@ const useActivity = ({
     const summary: ActivitySummary = {
       totalActivities: activities.length,
       byType: {
-        'ROOM_JOIN': 0,
-        'ROOM_LEAVE': 0,
-        'COMMENT_CREATE': 0,
-        'COMMENT_UPDATE': 0,
-        'COMMENT_DELETE': 0,
-        'REPLY_CREATE': 0,
-        'REPLY_UPDATE': 0,
-        'REPLY_DELETE': 0
+        'USER_JOINED': 0,
+        'USER_LEFT': 0,
+        'COMMENT_CREATED': 0,
+        'COMMENT_UPDATED': 0,
+        'COMMENT_DELETED': 0,
+        'REPLY_CREATED': 0,
+        'REPLY_UPDATED': 0,
+        'REPLY_DELETED': 0
       },
       byUser: {},
       mostActiveUsers: [],

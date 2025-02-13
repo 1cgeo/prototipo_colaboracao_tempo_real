@@ -19,7 +19,6 @@ import {
 } from '../types/websocket.js';
 import logger from '../utils/logger.js';
 import { config } from '../config/index.js';
-import { generateRandomName } from '../utils/nameGenerator.js';
 
 // Import singleton instances
 import { userService } from '../services/userService.js';
@@ -36,7 +35,7 @@ export function setupWebSocket(httpServer: any): void {
       pingInterval: config.ws.pingInterval,
       cors: {
         origin: config.security.corsOrigin,
-        methods: ['GET', 'POST']
+        methods: ['GET', 'POST'],
       },
     },
   );
@@ -52,19 +51,17 @@ export function setupWebSocket(httpServer: any): void {
   io.use(async (socket, next) => {
     try {
       const { user_id } = socket.handshake.auth;
-     if (!user_id) {
-        return next(new Error('Authentication failed'));
+      console.log(socket.handshake.auth);
+
+      if (!user_id) {
+        return next(new Error('Authentication failed: missing user_id'));
       }
 
-      const displayName = generateRandomName();
-
-      // Validate or create user session info
-      socket.data.userId = user_id;
-      socket.data.displayName = displayName;
+      // Store user data in socket
+      socket.data.user_id = user_id;
 
       next();
     } catch (error) {
-      console.log(error)
       logger.error('Authentication error:', error);
       next(new Error('Authentication failed'));
     }
@@ -73,53 +70,59 @@ export function setupWebSocket(httpServer: any): void {
   // Handle connections
   io.on('connection', async (socket: Socket) => {
     try {
+      console.log('connection');
       await connectionManager.handleConnection(socket);
-      const { userId, displayName } = socket.data;
+      const { user_id } = socket.data;
 
-      logger.info('Client connected', { userId, displayName });
-      console.log(socket.data)
+      logger.info('Client connected', { user_id });
+
       // Room Events
       socket.on('room:join', async (event: RoomJoinEvent) => {
         try {
+          if (!event.room_id) {
+            throw new Error('Missing room_id');
+          }
+
           // Add user to room using service
-          await userService.createAnonymousUser(event.roomId);
+          await userService.createAnonymousUser(event.room_id);
           await wsState.addUserToRoom(
             socket,
-            userId,
-            event.roomId,
-            displayName,
+            user_id,
+            event.room_id,
+            event.display_name,
           );
 
           // Track join activity
           await activityService.logActivity(
-            event.roomId,
+            event.room_id,
             'USER_JOINED',
-            userId,
-            displayName,
-            { connectionId: socket.data.connectionId },
+            user_id,
+            event.display_name,
+            { connection_id: socket.data.connection_id },
           );
 
           // Get current room state
-          const roomState = await wsState.getRoomState(event.roomId);
+          const roomState = await wsState.getRoomState(event.room_id);
 
           // Get recent activities
           const recentActivities = await activityService.getActivityLog(
-            event.roomId,
+            event.room_id,
           );
 
           socket.emit('room:state', {
             ...roomState,
             recentActivities,
             timestamp: Date.now(),
-            roomId: event.roomId,
-            userId,
+            room_id: event.room_id,
+            user_id,
           });
 
           // Broadcast user joined
-          socket.to(event.roomId).emit('room:userJoined', {
-            userId,
-            displayName,
+          socket.to(event.room_id).emit('room:user_joined', {
+            user_id,
+            display_name: event.display_name,
             timestamp: Date.now(),
+            room_id: event.room_id,
           });
         } catch (error) {
           logger.error('Error joining room:', error);
@@ -132,23 +135,28 @@ export function setupWebSocket(httpServer: any): void {
 
       socket.on('room:leave', async (event: RoomLeaveEvent) => {
         try {
-          const roomId = event.roomId;
-          await wsState.removeUserFromRoom(socket, userId);
-          await userService.removeUserFromRoom(userId, roomId);
+          const roomId = event.room_id;
+          if (!roomId) {
+            throw new Error('Missing room_id');
+          }
+
+          await wsState.removeUserFromRoom(socket, user_id);
+          await userService.leaveRoom(user_id, roomId);
 
           // Track leave activity
           await activityService.logActivity(
             roomId,
             'USER_LEFT',
-            userId,
-            displayName,
+            user_id,
+            socket.data.display_name || 'Unknown User',
             { reason: 'left' },
           );
 
           // Broadcast user left
-          socket.to(roomId).emit('room:userLeft', {
-            userId,
-            displayName,
+          socket.to(roomId).emit('room:user_left', {
+            user_id,
+            room_id: roomId,
+            display_name: socket.data.display_name,
             timestamp: Date.now(),
           });
         } catch (error) {
@@ -163,7 +171,7 @@ export function setupWebSocket(httpServer: any): void {
       // Cursor Events
       socket.on('cursor:move', data => {
         try {
-          handleCursorMove(socket, userId, data, wsState);
+          handleCursorMove(socket, user_id, data, wsState);
         } catch (error) {
           logger.error('Error handling cursor movement:', error);
           socket.emit('error', {
@@ -176,7 +184,13 @@ export function setupWebSocket(httpServer: any): void {
       // Comment Events
       socket.on('comment:create', data => {
         try {
-          handleCommentCreate(socket, userId, displayName, data, wsState);
+          handleCommentCreate(
+            socket,
+            user_id,
+            socket.data.display_name,
+            data,
+            wsState,
+          );
         } catch (error) {
           logger.error('Error creating comment:', error);
           socket.emit('error', {
@@ -188,7 +202,7 @@ export function setupWebSocket(httpServer: any): void {
 
       socket.on('comment:update', data => {
         try {
-          handleCommentUpdate(socket, userId, data, wsState);
+          handleCommentUpdate(socket, user_id, data, wsState);
         } catch (error) {
           logger.error('Error updating comment:', error);
           socket.emit('error', {
@@ -200,7 +214,7 @@ export function setupWebSocket(httpServer: any): void {
 
       socket.on('comment:delete', data => {
         try {
-          handleCommentDelete(socket, userId, data, wsState);
+          handleCommentDelete(socket, user_id, data, wsState);
         } catch (error) {
           logger.error('Error deleting comment:', error);
           socket.emit('error', {
@@ -213,7 +227,13 @@ export function setupWebSocket(httpServer: any): void {
       // Reply Events
       socket.on('reply:create', data => {
         try {
-          handleReplyCreate(socket, userId, displayName, data, wsState);
+          handleReplyCreate(
+            socket,
+            user_id,
+            socket.data.display_name,
+            data,
+            wsState,
+          );
         } catch (error) {
           logger.error('Error creating reply:', error);
           socket.emit('error', {
@@ -225,7 +245,7 @@ export function setupWebSocket(httpServer: any): void {
 
       socket.on('reply:update', data => {
         try {
-          handleReplyUpdate(socket, userId, data, wsState);
+          handleReplyUpdate(socket, user_id, data, wsState);
         } catch (error) {
           logger.error('Error updating reply:', error);
           socket.emit('error', {
@@ -237,7 +257,7 @@ export function setupWebSocket(httpServer: any): void {
 
       socket.on('reply:delete', data => {
         try {
-          handleReplyDelete(socket, userId, data, wsState);
+          handleReplyDelete(socket, user_id, data, wsState);
         } catch (error) {
           logger.error('Error deleting reply:', error);
           socket.emit('error', {
@@ -250,31 +270,32 @@ export function setupWebSocket(httpServer: any): void {
       // Handle disconnection
       socket.on('disconnect', async reason => {
         try {
-          const roomId = wsState.getUserRoom(userId);
+          const roomId = wsState.getUserRoom(user_id);
           if (roomId) {
-            await wsState.removeUserFromRoom(socket, userId);
-            await userService.removeUserFromRoom(userId, roomId);
+            await wsState.removeUserFromRoom(socket, user_id);
+            await userService.leaveRoom(user_id, roomId);
 
             // Track disconnect activity
             await activityService.logActivity(
               roomId,
               'USER_LEFT',
-              userId,
-              displayName,
+              user_id,
+              socket.data.display_name || 'Unknown User',
               { reason: 'disconnected' },
             );
 
             // Broadcast user disconnected
-            socket.to(roomId).emit('room:userLeft', {
-              userId,
-              displayName,
+            socket.to(roomId).emit('room:user_left', {
+              user_id,
+              room_id: roomId,
+              display_name: socket.data.display_name,
               timestamp: Date.now(),
             });
           }
 
           logger.info('Client disconnected', {
-            userId,
-            displayName,
+            user_id,
+            display_name: socket.data.display_name,
             reason,
           });
         } catch (error) {

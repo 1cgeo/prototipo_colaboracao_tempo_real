@@ -1,8 +1,5 @@
 import { db } from '../database/index.js';
-import {
-  generateRandomName,
-  isValidGeneratedName,
-} from '../utils/nameGenerator.js';
+import { generateRandomName } from '../utils/nameGenerator.js';
 import logger from '../utils/logger.js';
 import { APIError } from '../middleware/error.js';
 
@@ -24,39 +21,25 @@ export class UserService {
   }
 
   /**
-   * Create or get an anonymous user
+   * Create a new anonymous user without room association
    */
-  async createAnonymousUser(roomId: string): Promise<{
-    userId: string;
+  async createAnonymousUser(userId: string): Promise<{
+    id: string;
     displayName: string;
   }> {
-    // Generate a unique display name
-    let displayName: string;
-    let attempts = 0;
-    const maxAttempts = 10;
+    const displayName = generateRandomName();
 
-    do {
-      displayName = generateRandomName();
-      const exists = await this.checkNameExists(roomId, displayName);
-      if (!exists) break;
-      attempts++;
-    } while (attempts < maxAttempts);
-
-    if (attempts >= maxAttempts) {
-      throw new APIError(500, 'Failed to generate unique display name');
-    }
-
-    // Create new user
+    // Create new user without room association
     const user = await db.one(
       `
-      INSERT INTO anonymous_users (display_name, map_room_uuid)
+      INSERT INTO anonymous_users (id, display_name)
       VALUES ($1, $2)
       RETURNING id, display_name as "displayName"
       `,
-      [displayName, roomId],
+      [userId, displayName],
     );
 
-    // Add to active users
+    // Add to active users cache
     this.activeUsers.set(user.id, {
       displayName: user.displayName,
       lastSeen: new Date(),
@@ -65,16 +48,62 @@ export class UserService {
     logger.info('Created anonymous user', {
       userId: user.id,
       displayName: user.displayName,
-      roomId,
     });
 
     return user;
   }
 
   /**
+   * Associate user with a room
+   */
+  async joinRoom(userId: string, roomId: string): Promise<void> {
+    await db.tx(async t => {
+      // Verify room exists
+      const room = await t.oneOrNone(
+        'SELECT uuid FROM map_rooms WHERE uuid = $1',
+        [roomId],
+      );
+
+      if (!room) {
+        throw new APIError(404, 'Room not found');
+      }
+
+      // Update user's room
+      await t.none(
+        `
+        UPDATE anonymous_users
+        SET map_room_uuid = $1,
+            last_seen_at = NOW()
+        WHERE id = $2
+        `,
+        [roomId, userId],
+      );
+    });
+
+    logger.info('User joined room', { userId, roomId });
+  }
+
+  /**
+   * Remove user from room
+   */
+  async leaveRoom(userId: string, roomId: string): Promise<void> {
+    await db.none(
+      `
+      UPDATE anonymous_users
+      SET map_room_uuid = NULL,
+          last_seen_at = NOW()
+      WHERE id = $1 AND map_room_uuid = $2
+      `,
+      [userId, roomId],
+    );
+
+    logger.info('User left room', { userId, roomId });
+  }
+
+  /**
    * Update user's last seen timestamp
    */
-  async updateUserActivity(userId: string, roomId: string): Promise<void> {
+  async updateUserActivity(userId: string): Promise<void> {
     const now = new Date();
 
     // Update memory cache
@@ -88,9 +117,9 @@ export class UserService {
       `
       UPDATE anonymous_users
       SET last_seen_at = NOW()
-      WHERE id = $1 AND map_room_uuid = $2
+      WHERE id = $1
       `,
-      [userId, roomId],
+      [userId],
     );
   }
 
@@ -122,32 +151,12 @@ export class UserService {
   }
 
   /**
-   * Check if a display name exists in a room
-   */
-  private async checkNameExists(
-    roomId: string,
-    displayName: string,
-  ): Promise<boolean> {
-    const exists = await db.oneOrNone(
-      `
-      SELECT 1
-      FROM anonymous_users
-      WHERE map_room_uuid = $1
-        AND display_name = $2
-        AND last_seen_at > NOW() - INTERVAL '5 minutes'
-      `,
-      [roomId, displayName],
-    );
-    return !!exists;
-  }
-
-  /**
    * Get user by ID
    */
   async getUser(userId: string): Promise<{
     id: string;
     displayName: string;
-    roomId: string;
+    roomId: string | null;
     joinedAt: Date;
     lastSeen: Date;
   } | null> {
@@ -164,62 +173,6 @@ export class UserService {
       `,
       [userId],
     );
-  }
-
-  /**
-   * Change user's display name
-   */
-  async changeDisplayName(
-    userId: string,
-    newDisplayName: string,
-  ): Promise<void> {
-    // Validate new name
-    if (!isValidGeneratedName(newDisplayName)) {
-      throw new APIError(400, 'Invalid display name format');
-    }
-
-    const user = await this.getUser(userId);
-    if (!user) {
-      throw new APIError(404, 'User not found');
-    }
-
-    // Check if name exists in room
-    const exists = await this.checkNameExists(user.roomId, newDisplayName);
-    if (exists) {
-      throw new APIError(409, 'Display name already in use in this room');
-    }
-
-    // Update name
-    await db.none(
-      `
-      UPDATE anonymous_users
-      SET display_name = $1
-      WHERE id = $2
-      `,
-      [newDisplayName, userId],
-    );
-
-    // Update cache
-    const userInfo = this.activeUsers.get(userId);
-    if (userInfo) {
-      userInfo.displayName = newDisplayName;
-    }
-  }
-
-  /**
-   * Remove user from room
-   */
-  async removeUserFromRoom(userId: string, roomId: string): Promise<void> {
-    await db.none(
-      `
-      UPDATE anonymous_users
-      SET last_seen_at = NOW() - INTERVAL '10 minutes'
-      WHERE id = $1 AND map_room_uuid = $2
-      `,
-      [userId, roomId],
-    );
-
-    this.activeUsers.delete(userId);
   }
 
   /**
