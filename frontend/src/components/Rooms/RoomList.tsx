@@ -55,7 +55,7 @@ const RoomList: React.FC<RoomListProps> = ({
   if (!Array.isArray(rooms) || rooms.length === 0) {
     return (
       <Typography color="textSecondary" sx={{ p: 2 }}>
-        No rooms available. Create one to get started!
+        Sem mapas disponíveis. Crie um para iniciar.
       </Typography>
     );
   }

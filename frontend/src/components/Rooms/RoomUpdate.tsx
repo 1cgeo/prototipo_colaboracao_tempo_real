@@ -60,7 +60,7 @@ const RoomUpdate: React.FC<RoomUpdateProps> = ({
       maxWidth="sm"
       fullWidth
     >
-      <DialogTitle>Update Room</DialogTitle>
+      <DialogTitle>Atualizar Mapa</DialogTitle>
       <DialogContent>
         <TextField
           autoFocus
