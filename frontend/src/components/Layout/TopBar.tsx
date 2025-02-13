@@ -21,7 +21,7 @@ const TopBar: React.FC = () => {
       <Toolbar>
         {/* App Title */}
         <Typography variant="h6" component="div" sx={{ flexGrow: 0, mr: 2 }}>
-          Collaborative Map
+          Mapa Colaborativo
         </Typography>
 
         {/* Room Info */}
@@ -50,13 +50,6 @@ const TopBar: React.FC = () => {
               Leave Room
             </Button>
           </>
-        )}
-
-        {/* When not in a room */}
-        {!currentRoom && (
-          <Typography variant="subtitle1" sx={{ flexGrow: 1 }}>
-            Select or Create a Room
-          </Typography>
         )}
       </Toolbar>
     </AppBar>

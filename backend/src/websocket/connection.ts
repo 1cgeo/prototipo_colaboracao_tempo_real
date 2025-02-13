@@ -30,7 +30,8 @@ export class ConnectionManager {
    */
   async handleConnection(socket: Socket): Promise<void> {
     try {
-      const { userId, displayName } = socket.handshake.auth;
+      const { user_id, displayName } = socket.handshake.auth;
+      console.log(user_id, displayName)
       const connectionId = uuidv4();
 
       // Store connection information
@@ -42,11 +43,11 @@ export class ConnectionManager {
 
       // Attach connection ID to socket for future reference
       socket.data.connectionId = connectionId;
-      socket.data.userId = userId;
+      socket.data.userId = user_id;
 
       logger.info('New connection established', {
         connectionId,
-        userId,
+        user_id,
         displayName,
       });
 

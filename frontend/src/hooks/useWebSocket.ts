@@ -1,5 +1,4 @@
 import { useEffect, useState, useCallback } from 'react';
-import { Socket } from 'socket.io-client';
 import { initializeSocket, disconnectSocket, getSocket, wsEvents } from '../utils/api';
 import { 
   AuthenticationSuccess, 
@@ -40,10 +39,7 @@ interface WebSocketState {
   connected: boolean;
   authenticating: boolean;
   currentRoom: string | null;
-  reconnectAttempts: number;
 }
-
-const MAX_RECONNECT_ATTEMPTS = 5;
 
 const useWebSocket = ({
   userId,
@@ -66,71 +62,63 @@ const useWebSocket = ({
   const [state, setState] = useState<WebSocketState>({
     connected: false,
     authenticating: false,
-    currentRoom: null,
-    reconnectAttempts: 0
+    currentRoom: null
   });
 
   // Initialize socket connection
-  useEffect(() => {
-    let mounted = true;
+  const connectSocket = useCallback(async () => {
+    if (state.authenticating) return;
+
     setState(prev => ({ ...prev, authenticating: true }));
 
-    const connectSocket = async () => {
-      try {
-        const authData = await initializeSocket({ 
-          user_id: userId, 
-          display_name: displayName 
+    try {
+      const authData = await initializeSocket({ 
+        user_id: userId, 
+        display_name: displayName 
+      });
+      
+      setState(prev => ({ 
+        ...prev, 
+        connected: true,
+        authenticating: false
+      }));
+
+      onAuthSuccess?.(authData);
+    } catch (error) {
+      setState(prev => ({ 
+        ...prev, 
+        connected: false,
+        authenticating: false
+      }));
+
+      if (error instanceof Error) {
+        onAuthError?.({
+          code: 'AUTH_ERROR',
+          message: error.message
         });
-        
-        if (!mounted) return;
-
-        setState(prev => ({ 
-          ...prev, 
-          connected: true,
-          authenticating: false,
-          reconnectAttempts: 0
-        }));
-        onAuthSuccess?.(authData);
-      } catch (error) {
-        if (!mounted) return;
-        
-        setState(prev => ({ 
-          ...prev, 
-          connected: false,
-          authenticating: false
-        }));
-
-        if (error instanceof Error) {
-          onAuthError?.({
-            code: 'AUTH_ERROR',
-            message: error.message
-          });
-        }
-        
-        onError?.(error instanceof Error ? error : new Error('Unknown error'));
       }
-    };
+      
+      onError?.(error instanceof Error ? error : new Error('Unknown error'));
+    }
+  }, [userId, displayName, state.authenticating, onAuthSuccess, onAuthError, onError]);
 
+  // Setup socket connection
+  useEffect(() => {
     connectSocket();
 
     return () => {
-      mounted = false;
       disconnectSocket();
     };
-  }, [userId, displayName, onAuthSuccess, onAuthError, onError]);
+  }, [connectSocket]);
 
   // Setup socket event listeners
   useEffect(() => {
     const socket = getSocket();
     if (!socket) return;
 
-    // Connection events
+    // Base handlers that are always available
     const handleConnect = () => {
-      setState(prev => ({ 
-        ...prev, 
-        connected: true,
-        reconnectAttempts: 0
-      }));
+      setState(prev => ({ ...prev, connected: true }));
 
       // Rejoin room if we were in one
       if (state.currentRoom) {
@@ -138,111 +126,58 @@ const useWebSocket = ({
       }
     };
 
-    const handleDisconnect = (reason: Socket.DisconnectReason) => {
-      setState(prev => ({ 
-        ...prev, 
-        connected: false
-      }));
-      
-      if (reason === 'io server disconnect') {
-        return; // Server initiated disconnect, don't reconnect
-      }
-
-      if (state.reconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
-        setState(prev => ({
-          ...prev,
-          reconnectAttempts: prev.reconnectAttempts + 1
-        }));
-      }
-    };
-
-    const handleReconnect = () => {
-      onReconnect?.();
+    const handleDisconnect = () => {
+      setState(prev => ({ ...prev, connected: false }));
     };
 
     const handleError = (error: Error) => {
       onError?.(error);
     };
 
-    // Room events
-    const handleRoomState = (event: RoomStateEvent) => {
-      onRoomState?.(event);
-    };
+    // Handler factory to ensure we always return a function
+    const createHandler = <T extends unknown>(callback?: (data: T) => void) => 
+      (data: T) => callback?.(data);
 
-    const handleUserJoin = (event: RoomJoinEvent) => {
-      onJoin?.(event);
-    };
-
-    const handleUserLeave = (event: RoomLeaveEvent) => {
-      onLeave?.(event);
-    };
-
-    const handleCursorMove = (event: CursorMoveEvent) => {
-      onCursorMove?.(event);
-    };
-
-    // Comment events
-    const handleCommentCreate = (event: CommentCreateEvent) => {
-      onCommentCreate?.(event);
-    };
-
-    const handleCommentUpdate = (event: CommentUpdateEvent) => {
-      onCommentUpdate?.(event);
-    };
-
-    const handleCommentDelete = (event: CommentDeleteEvent) => {
-      onCommentDelete?.(event);
-    };
-
-    // Reply events
-    const handleReplyCreate = (event: ReplyCreateEvent) => {
-      onReplyCreate?.(event);
-    };
-
-    const handleReplyUpdate = (event: ReplyUpdateEvent) => {
-      onReplyUpdate?.(event);
-    };
-
-    const handleReplyDelete = (event: ReplyDeleteEvent) => {
-      onReplyDelete?.(event);
-    };
-
-    // Register all event listeners
+    // Connection events
     socket.on('connect', handleConnect);
     socket.on('disconnect', handleDisconnect);
-    socket.on('reconnect', handleReconnect);
+    socket.on('reconnect', () => onReconnect?.());
     socket.on('error', handleError);
-    socket.on('room:state', handleRoomState);
-    socket.on('room:join', handleUserJoin);
-    socket.on('room:leave', handleUserLeave);
-    socket.on('cursor:move', handleCursorMove);
-    socket.on('comment:create', handleCommentCreate);
-    socket.on('comment:update', handleCommentUpdate);
-    socket.on('comment:delete', handleCommentDelete);
-    socket.on('reply:create', handleReplyCreate);
-    socket.on('reply:update', handleReplyUpdate);
-    socket.on('reply:delete', handleReplyDelete);
+
+    // Room events with type-safe handlers
+    socket.on('room:state', createHandler<RoomStateEvent>(onRoomState));
+    socket.on('room:join', createHandler<RoomJoinEvent>(onJoin));
+    socket.on('room:leave', createHandler<RoomLeaveEvent>(onLeave));
+    socket.on('cursor:move', createHandler<CursorMoveEvent>(onCursorMove));
+
+    // Comment events with type-safe handlers
+    socket.on('comment:create', createHandler<CommentCreateEvent>(onCommentCreate));
+    socket.on('comment:update', createHandler<CommentUpdateEvent>(onCommentUpdate));
+    socket.on('comment:delete', createHandler<CommentDeleteEvent>(onCommentDelete));
+
+    // Reply events with type-safe handlers
+    socket.on('reply:create', createHandler<ReplyCreateEvent>(onReplyCreate));
+    socket.on('reply:update', createHandler<ReplyUpdateEvent>(onReplyUpdate));
+    socket.on('reply:delete', createHandler<ReplyDeleteEvent>(onReplyDelete));
 
     return () => {
-      // Cleanup all event listeners
       socket.off('connect', handleConnect);
       socket.off('disconnect', handleDisconnect);
-      socket.off('reconnect', handleReconnect);
+      socket.off('reconnect');
       socket.off('error', handleError);
-      socket.off('room:state', handleRoomState);
-      socket.off('room:join', handleUserJoin);
-      socket.off('room:leave', handleUserLeave);
-      socket.off('cursor:move', handleCursorMove);
-      socket.off('comment:create', handleCommentCreate);
-      socket.off('comment:update', handleCommentUpdate);
-      socket.off('comment:delete', handleCommentDelete);
-      socket.off('reply:create', handleReplyCreate);
-      socket.off('reply:update', handleReplyUpdate);
-      socket.off('reply:delete', handleReplyDelete);
+      socket.off('room:state');
+      socket.off('room:join');
+      socket.off('room:leave');
+      socket.off('cursor:move');
+      socket.off('comment:create');
+      socket.off('comment:update');
+      socket.off('comment:delete');
+      socket.off('reply:create');
+      socket.off('reply:update');
+      socket.off('reply:delete');
     };
   }, [
     state.currentRoom,
-    state.reconnectAttempts,
     onRoomState,
     onJoin,
     onLeave,

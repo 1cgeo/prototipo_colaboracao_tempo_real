@@ -65,7 +65,7 @@ const RoomUpdate: React.FC<RoomUpdateProps> = ({
         <TextField
           autoFocus
           margin="dense"
-          label="Room Name"
+          label="Nome do Mapa"
           type="text"
           fullWidth
           value={formData.name}
@@ -77,7 +77,7 @@ const RoomUpdate: React.FC<RoomUpdateProps> = ({
         />
         <TextField
           margin="dense"
-          label="Description"
+          label="Descrição"
           type="text"
           fullWidth
           multiline
@@ -89,14 +89,14 @@ const RoomUpdate: React.FC<RoomUpdateProps> = ({
       </DialogContent>
       <DialogActions>
         <Button onClick={handleClose} disabled={loading}>
-          Cancel
+        Cancelar
         </Button>
         <Button
           onClick={handleSubmit}
           variant="contained"
           disabled={loading || !formData.name?.trim()}
         >
-          {loading ? <CircularProgress size={24} /> : 'Update'}
+          {loading ? <CircularProgress size={24} /> : 'Atualizar'}
         </Button>
       </DialogActions>
     </Dialog>

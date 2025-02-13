@@ -61,7 +61,7 @@ const CommentCreate: React.FC<CommentCreateProps> = ({
       maxWidth="sm"
       fullWidth
     >
-      <DialogTitle>Add Comment</DialogTitle>
+      <DialogTitle>Adicionar Comentário</DialogTitle>
       <DialogContent>
         {error && (
           <Alert severity="error" sx={{ mb: 2 }}>
@@ -69,7 +69,7 @@ const CommentCreate: React.FC<CommentCreateProps> = ({
           </Alert>
         )}
         <Typography variant="caption" color="textSecondary" sx={{ mb: 2, display: 'block' }}>
-          Location: {formatCoordinates(location)}
+          Localização: {formatCoordinates(location)}
         </Typography>
         <TextField
           autoFocus
@@ -84,19 +84,19 @@ const CommentCreate: React.FC<CommentCreateProps> = ({
           disabled={loading}
           error={Boolean(error)}
           helperText={error?.message}
-          placeholder="What would you like to say about this location?"
+          placeholder="O que gostaria de falar sobre esse lugar?"
         />
       </DialogContent>
       <DialogActions>
         <Button onClick={handleClose} disabled={loading}>
-          Cancel
+          Cancelar
         </Button>
         <Button
           onClick={handleSubmit}
           variant="contained"
           disabled={loading || !content.trim()}
         >
-          {loading ? <CircularProgress size={24} /> : 'Add Comment'}
+          {loading ? <CircularProgress size={24} /> : 'Adicionar Comentário'}
         </Button>
       </DialogActions>
     </Dialog>

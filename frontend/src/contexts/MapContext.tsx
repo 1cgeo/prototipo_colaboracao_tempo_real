@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useState } from 'react';
+import React, { createContext, useContext, useEffect, useState, useCallback, useRef } from 'react';
 import maplibregl from 'maplibre-gl';
 import { Comment, CommentCreateInput, CommentUpdateInput } from '../types';
 import { commentApi } from '../utils/api';
@@ -47,34 +47,73 @@ export const MapProvider: React.FC<MapProviderProps> = ({ children }) => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<Error | null>(null);
 
-  // Initialize map
-  const initializeMap = (container: HTMLElement) => {
-    if (map) return;
+  // Use ref for map instance to avoid dependency cycles
+  const mapRef = useRef<maplibregl.Map | null>(null);
 
-    const newMap = new maplibregl.Map({
-      container,
-      style: 'https://demotiles.maplibre.org/style.json',
-      center,
-      zoom,
-    });
+  // Handler for map movement
+  const handleMapMove = useCallback((eventMap: maplibregl.Map) => {
+    const center = eventMap.getCenter();
+    setCenter([center.lng, center.lat]);
+    setZoom(eventMap.getZoom());
+    setBounds(eventMap.getBounds());
+  }, []);
 
-    newMap.on('move', () => {
-      const center = newMap.getCenter();
-      setCenter([center.lng, center.lat]);
-      setZoom(newMap.getZoom());
-      setBounds(newMap.getBounds());
-    });
-
-    setMap(newMap);
-  };
-
-  // Destroy map
-  const destroyMap = () => {
-    if (map) {
-      map.remove();
-      setMap(null);
+  // Cleanup map resources
+  const cleanupMap = useCallback(() => {
+    if (mapRef.current) {
+      try {
+        const currentMap = mapRef.current;
+        
+        // Remove event listeners
+        currentMap.off('move', handleMapMove);
+        
+        // Remove markers if any
+        const markers = document.querySelectorAll('.maplibregl-marker');
+        markers.forEach(marker => marker.remove());
+        
+        // Remove map
+        currentMap.remove();
+        
+        // Reset states
+        mapRef.current = null;
+        setMap(null);
+        setBounds(null);
+      } catch (err) {
+        console.error('Error cleaning up map:', err);
+      }
     }
-  };
+  }, [handleMapMove]);
+
+  // Initialize map
+  const initializeMap = useCallback((container: HTMLElement) => {
+    // Cleanup existing map if any
+    cleanupMap();
+
+    try {
+      const newMap = new maplibregl.Map({
+        container,
+        style: 'https://demotiles.maplibre.org/style.json',
+        center,
+        zoom,
+      });
+
+      // Store map instance in both state and ref
+      newMap.on('move', () => handleMapMove(newMap));
+      mapRef.current = newMap;
+      setMap(newMap);
+      setError(null);
+    } catch (err) {
+      console.error('Error initializing map:', err);
+      setError(err instanceof Error ? err : new Error('Failed to initialize map'));
+    }
+  }, [center, zoom, handleMapMove, cleanupMap]);
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      cleanupMap();
+    };
+  }, [cleanupMap]);
 
   // Load comments when room changes
   useEffect(() => {
@@ -189,12 +228,12 @@ export const MapProvider: React.FC<MapProviderProps> = ({ children }) => {
     loading,
     error,
     initializeMap,
-    destroyMap,
+    destroyMap: cleanupMap,
     setCenter: (center: [number, number]) => {
-      if (map) map.setCenter(center);
+      if (mapRef.current) mapRef.current.setCenter(center);
     },
     setZoom: (zoom: number) => {
-      if (map) map.setZoom(zoom);
+      if (mapRef.current) mapRef.current.setZoom(zoom);
     },
     createComment,
     updateComment,

@@ -11,13 +11,13 @@ export class MapService {
     const rooms = await db.any(`
       WITH room_stats AS (
         SELECT 
-          map_room_uuid,
-          COUNT(DISTINCT user_id) as recent_users,
+          au.map_room_uuid,
+          COUNT(DISTINCT au.id) as recent_users,
           COUNT(DISTINCT c.id) as comment_count
         FROM anonymous_users au
         LEFT JOIN spatial_comments c ON c.map_room_uuid = au.map_room_uuid
         WHERE au.last_seen_at > NOW() - INTERVAL '5 minutes'
-        GROUP BY map_room_uuid
+        GROUP BY au.map_room_uuid
       )
       SELECT 
         m.uuid,

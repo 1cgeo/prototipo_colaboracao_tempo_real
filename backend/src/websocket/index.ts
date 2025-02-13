@@ -19,6 +19,7 @@ import {
 } from '../types/websocket.js';
 import logger from '../utils/logger.js';
 import { config } from '../config/index.js';
+import { generateRandomName } from '../utils/nameGenerator.js';
 
 // Import singleton instances
 import { userService } from '../services/userService.js';
@@ -35,7 +36,7 @@ export function setupWebSocket(httpServer: any): void {
       pingInterval: config.ws.pingInterval,
       cors: {
         origin: config.security.corsOrigin,
-        methods: ['GET', 'POST'],
+        methods: ['GET', 'POST']
       },
     },
   );
@@ -50,18 +51,20 @@ export function setupWebSocket(httpServer: any): void {
   // Middleware to authenticate connections
   io.use(async (socket, next) => {
     try {
-      const { userId, displayName } = socket.handshake.auth;
-
-      if (!userId || !displayName) {
+      const { user_id } = socket.handshake.auth;
+     if (!user_id) {
         return next(new Error('Authentication failed'));
       }
 
+      const displayName = generateRandomName();
+
       // Validate or create user session info
-      socket.data.userId = userId;
+      socket.data.userId = user_id;
       socket.data.displayName = displayName;
 
       next();
     } catch (error) {
+      console.log(error)
       logger.error('Authentication error:', error);
       next(new Error('Authentication failed'));
     }
@@ -74,7 +77,7 @@ export function setupWebSocket(httpServer: any): void {
       const { userId, displayName } = socket.data;
 
       logger.info('Client connected', { userId, displayName });
-
+      console.log(socket.data)
       // Room Events
       socket.on('room:join', async (event: RoomJoinEvent) => {
         try {

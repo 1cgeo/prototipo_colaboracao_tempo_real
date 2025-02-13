@@ -47,12 +47,12 @@ const RoomCreate: React.FC<RoomCreateProps> = ({
       maxWidth="sm"
       fullWidth
     >
-      <DialogTitle>Create New Room</DialogTitle>
+      <DialogTitle>Criar novo Mapa</DialogTitle>
       <DialogContent>
         <TextField
           autoFocus
           margin="dense"
-          label="Room Name"
+          label="Nome do Mapa"
           type="text"
           fullWidth
           value={formData.name}
@@ -64,7 +64,7 @@ const RoomCreate: React.FC<RoomCreateProps> = ({
         />
         <TextField
           margin="dense"
-          label="Description"
+          label="Descrição"
           type="text"
           fullWidth
           multiline
@@ -76,14 +76,14 @@ const RoomCreate: React.FC<RoomCreateProps> = ({
       </DialogContent>
       <DialogActions>
         <Button onClick={handleClose} disabled={loading}>
-          Cancel
+        Cancelar
         </Button>
         <Button
           onClick={handleSubmit}
           variant="contained"
           disabled={loading || !formData.name.trim()}
         >
-          {loading ? <CircularProgress size={24} /> : 'Create'}
+          {loading ? <CircularProgress size={24} /> : 'Criar'}
         </Button>
       </DialogActions>
     </Dialog>

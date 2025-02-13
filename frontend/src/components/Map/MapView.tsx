@@ -7,19 +7,16 @@ import CommentLayer from './CommentLayer';
 
 const MapView: React.FC = () => {
   const mapContainer = useRef<HTMLDivElement>(null);
-  const { initializeMap, destroyMap } = useMap();
+  const { initializeMap } = useMap();
   const { currentRoom } = useCollaboration();
 
   // Initialize map
   useEffect(() => {
-    if (mapContainer.current) {
-      initializeMap(mapContainer.current);
+    const container = mapContainer.current;
+    if (container) {
+      initializeMap(container);
     }
-
-    return () => {
-      destroyMap();
-    };
-  }, [initializeMap, destroyMap]);
+  }, [initializeMap]);
 
   return (
     <Box

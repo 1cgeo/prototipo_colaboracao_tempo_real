@@ -55,7 +55,7 @@ const ReplyCreate: React.FC<ReplyCreateProps> = ({
       maxWidth="sm"
       fullWidth
     >
-      <DialogTitle>Reply to Comment</DialogTitle>
+      <DialogTitle>Responder um comentário</DialogTitle>
       <DialogContent>
         {error && (
           <Alert severity="error" sx={{ mb: 2 }}>
@@ -83,7 +83,7 @@ const ReplyCreate: React.FC<ReplyCreateProps> = ({
         <TextField
           autoFocus
           margin="dense"
-          label="Your Reply"
+          label="Sua Resposta"
           type="text"
           fullWidth
           multiline
@@ -93,19 +93,19 @@ const ReplyCreate: React.FC<ReplyCreateProps> = ({
           disabled={loading}
           error={Boolean(error)}
           helperText={error?.message}
-          placeholder="Write your reply..."
+          placeholder="Escreva sua resposta..."
         />
       </DialogContent>
       <DialogActions>
         <Button onClick={handleClose} disabled={loading}>
-          Cancel
+        Cancelar
         </Button>
         <Button
           onClick={handleSubmit}
           variant="contained"
           disabled={loading || !content.trim()}
         >
-          {loading ? <CircularProgress size={24} /> : 'Reply'}
+          {loading ? <CircularProgress size={24} /> : 'Responder'}
         </Button>
       </DialogActions>
     </Dialog>

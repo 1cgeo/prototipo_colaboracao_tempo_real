@@ -3,13 +3,16 @@ import {
   Box,
   Paper,
   Typography,
-  Button
+  Button,
+  Alert,
+  Snackbar
 } from '@mui/material';
 import {
   Add as AddIcon
 } from '@mui/icons-material';
 import { Room, RoomCreateInput, RoomUpdateInput } from '../../types';
 import { useCollaboration } from '../../contexts/CollaborationContext';
+import { roomApi } from '../../utils/api';
 import RoomList from './RoomList';
 import RoomCreate from './RoomCreate';
 import RoomUpdate from './RoomUpdate';
@@ -19,6 +22,7 @@ const RoomManager: React.FC = () => {
   const [rooms, setRooms] = useState<Room[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<Error | null>(null);
+  const [showError, setShowError] = useState(false);
   
   // Dialog states
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
@@ -29,12 +33,13 @@ const RoomManager: React.FC = () => {
   const loadRooms = useCallback(async () => {
     setLoading(true);
     try {
-      const response = await fetch('/api/maps');
-      const rooms = await response.json();
-      setRooms(rooms);
+      const loadedRooms = await roomApi.list();
+      setRooms(loadedRooms);
       setError(null);
     } catch (err) {
-      setError(err as Error);
+      const error = err instanceof Error ? err : new Error('Failed to load rooms');
+      setError(error);
+      setShowError(true);
     } finally {
       setLoading(false);
     }
@@ -49,19 +54,15 @@ const RoomManager: React.FC = () => {
   const handleCreateRoom = async (input: RoomCreateInput) => {
     setLoading(true);
     try {
-      const response = await fetch('/api/maps', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(input),
-      });
-      const newRoom = await response.json();
+      const newRoom = await roomApi.create(input);
       setRooms(prev => [...prev, newRoom]);
       setCreateDialogOpen(false);
+      setError(null);
     } catch (err) {
-      setError(err as Error);
-      throw err;
+      const error = err instanceof Error ? err : new Error('Failed to create room');
+      setError(error);
+      setShowError(true);
+      throw error;
     } finally {
       setLoading(false);
     }
@@ -71,22 +72,18 @@ const RoomManager: React.FC = () => {
   const handleUpdateRoom = async (roomId: string, input: RoomUpdateInput) => {
     setLoading(true);
     try {
-      const response = await fetch(`/api/maps/${roomId}`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(input),
-      });
-      const updatedRoom = await response.json();
+      const updatedRoom = await roomApi.update(roomId, input);
       setRooms(prev => prev.map(room => 
         room.uuid === updatedRoom.uuid ? updatedRoom : room
       ));
       setUpdateDialogOpen(false);
       setSelectedRoom(null);
+      setError(null);
     } catch (err) {
-      setError(err as Error);
-      throw err;
+      const error = err instanceof Error ? err : new Error('Failed to update room');
+      setError(error);
+      setShowError(true);
+      throw error;
     } finally {
       setLoading(false);
     }
@@ -96,12 +93,13 @@ const RoomManager: React.FC = () => {
   const handleDeleteRoom = async (roomId: string) => {
     setLoading(true);
     try {
-      await fetch(`/api/maps/${roomId}`, {
-        method: 'DELETE',
-      });
+      await roomApi.delete(roomId);
       setRooms(prev => prev.filter(room => room.uuid !== roomId));
+      setError(null);
     } catch (err) {
-      setError(err as Error);
+      const error = err instanceof Error ? err : new Error('Failed to delete room');
+      setError(error);
+      setShowError(true);
     } finally {
       setLoading(false);
     }
@@ -111,8 +109,11 @@ const RoomManager: React.FC = () => {
   const handleJoinRoom = async (room: Room) => {
     try {
       await joinRoom(room.uuid);
+      setError(null);
     } catch (err) {
-      setError(err as Error);
+      const error = err instanceof Error ? err : new Error('Failed to join room');
+      setError(error);
+      setShowError(true);
     }
   };
 
@@ -120,22 +121,17 @@ const RoomManager: React.FC = () => {
     <Paper sx={{ p: 3 }}>
       <Box sx={{ display: 'flex', alignItems: 'center', mb: 3 }}>
         <Typography variant="h5" sx={{ flexGrow: 1 }}>
-          Available Rooms
+          Mapas disponíveis
         </Typography>
         <Button
           variant="contained"
           startIcon={<AddIcon />}
           onClick={() => setCreateDialogOpen(true)}
+          disabled={loading}
         >
-          Create Room
+          Criar Mapa
         </Button>
       </Box>
-
-      {error && (
-        <Typography color="error" sx={{ mb: 2 }}>
-          Error: {error.message}
-        </Typography>
-      )}
 
       <RoomList
         rooms={rooms}
@@ -170,6 +166,16 @@ const RoomManager: React.FC = () => {
           onSubmit={(input) => handleUpdateRoom(selectedRoom.uuid, input)}
         />
       )}
+
+      <Snackbar
+        open={showError}
+        autoHideDuration={6000}
+        onClose={() => setShowError(false)}
+      >
+        <Alert severity="error" onClose={() => setShowError(false)}>
+          {error?.message}
+        </Alert>
+      </Snackbar>
     </Paper>
   );
 };

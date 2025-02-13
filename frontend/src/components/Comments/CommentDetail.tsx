@@ -196,7 +196,7 @@ const CommentDetail: React.FC<CommentDetailProps> = ({ comment, onClose }) => {
         maxWidth="sm"
         fullWidth
       >
-        <DialogTitle>Edit Comment</DialogTitle>
+        <DialogTitle>Editar comentário</DialogTitle>
         <DialogContent>
           <TextField
             autoFocus
@@ -216,14 +216,14 @@ const CommentDetail: React.FC<CommentDetailProps> = ({ comment, onClose }) => {
             onClick={() => setDialogState({ type: 'reply', open: false })}
             disabled={loading}
           >
-            Cancel
+            Cancelar
           </Button>
           <Button
             onClick={handleEditComment}
             variant="contained"
             disabled={loading || !content.trim()}
           >
-            {loading ? <CircularProgress size={24} /> : 'Update'}
+            {loading ? <CircularProgress size={24} /> : 'Atualizar'}
           </Button>
         </DialogActions>
       </Dialog>

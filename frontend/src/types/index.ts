@@ -116,6 +116,7 @@ export interface CursorPosition {
 
 export interface CursorMoveEvent {
   user_id: string;
+  room_id: string;
   location: Point;
   timestamp: number;
 }

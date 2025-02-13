@@ -2,14 +2,15 @@ import React from 'react';
 import {
   List,
   ListItem,
-  ListItemText,
-  ListItemSecondaryAction,
+  Alert,
   IconButton,
   Chip,
   CircularProgress,
   Box,
   Typography,
-  ButtonBase
+  Paper,
+  ListItemButton,
+  ListItemText
 } from '@mui/material';
 import {
   Edit as EditIcon,
@@ -28,7 +29,7 @@ interface RoomListProps {
 }
 
 const RoomList: React.FC<RoomListProps> = ({
-  rooms,
+  rooms = [], // Default to empty array to prevent map error
   loading,
   error,
   onJoinRoom,
@@ -45,13 +46,13 @@ const RoomList: React.FC<RoomListProps> = ({
 
   if (error) {
     return (
-      <Typography color="error" sx={{ p: 2 }}>
-        Error loading rooms: {error.message}
-      </Typography>
+      <Alert severity="error" sx={{ mb: 2 }}>
+        {error.message}
+      </Alert>
     );
   }
 
-  if (rooms.length === 0) {
+  if (!Array.isArray(rooms) || rooms.length === 0) {
     return (
       <Typography color="textSecondary" sx={{ p: 2 }}>
         No rooms available. Create one to get started!
@@ -62,25 +63,15 @@ const RoomList: React.FC<RoomListProps> = ({
   return (
     <List>
       {rooms.map((room) => (
-        <Box key={room.uuid}>
-          <ButtonBase
-            onClick={() => onJoinRoom(room)}
-            sx={{ width: '100%', textAlign: 'left' }}
-          >
-            <ListItem
-              sx={{
-                mb: 1,
-                width: '100%',
-                '&:hover': {
-                  backgroundColor: 'rgba(0, 0, 0, 0.04)'
-                }
-              }}
-            >
-              <ListItemText
-                primary={room.name}
-                secondary={room.description}
-              />
-              <ListItemSecondaryAction>
+        <Paper 
+          key={room.uuid} 
+          variant="outlined" 
+          sx={{ mb: 1, overflow: 'hidden' }}
+        >
+          <ListItem 
+            disablePadding
+            secondaryAction={
+              <Box sx={{ display: 'flex', alignItems: 'center' }}>
                 <Chip
                   icon={<PeopleIcon />}
                   label={`${room.active_users_count} online`}
@@ -94,6 +85,7 @@ const RoomList: React.FC<RoomListProps> = ({
                     e.stopPropagation();
                     onEditRoom(room);
                   }}
+                  size="small"
                   sx={{ mr: 1 }}
                 >
                   <EditIcon />
@@ -105,13 +97,31 @@ const RoomList: React.FC<RoomListProps> = ({
                     e.stopPropagation();
                     onDeleteRoom(room);
                   }}
+                  size="small"
                 >
                   <DeleteIcon />
                 </IconButton>
-              </ListItemSecondaryAction>
-            </ListItem>
-          </ButtonBase>
-        </Box>
+              </Box>
+            }
+          >
+            <ListItemButton onClick={() => onJoinRoom(room)}>
+              <ListItemText
+                primary={room.name}
+                secondary={room.description}
+                primaryTypographyProps={{
+                  variant: 'subtitle1',
+                  component: 'div',
+                  noWrap: true
+                }}
+                secondaryTypographyProps={{
+                  variant: 'body2',
+                  color: 'textSecondary',
+                  noWrap: true
+                }}
+              />
+            </ListItemButton>
+          </ListItem>
+        </Paper>
       ))}
     </List>
   );

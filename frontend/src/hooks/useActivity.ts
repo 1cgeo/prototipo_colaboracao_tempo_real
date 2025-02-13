@@ -22,7 +22,7 @@ interface ActivitySummary {
     userName: string;
     count: number;
   }>;
-  recentActivityRate: number; // activities per minute in last 5 minutes
+  recentActivityRate: number;
 }
 
 const DEFAULT_LIMIT = 50;
@@ -37,57 +37,70 @@ const useActivity = ({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<Error | null>(null);
   const [hasMore, setHasMore] = useState(false);
+  const [lastTimestamp, setLastTimestamp] = useState<string | undefined>(undefined);
   const loadingRef = useRef(false);
-  const isMountedRef = useRef(true);
+  const roomIdRef = useRef(roomId);
+
+  // Update roomId ref when it changes
+  useEffect(() => {
+    roomIdRef.current = roomId;
+  }, [roomId]);
 
   // Load activities
   const loadActivities = useCallback(async (reset: boolean = false) => {
-    if (!roomId || loadingRef.current) return;
+    const currentRoomId = roomIdRef.current;
+    if (!currentRoomId || loadingRef.current) return;
 
     loadingRef.current = true;
     setLoading(true);
-
     try {
-      // Se for reset, não usa cursor de paginação
-      // Se não for reset, usa a data da última atividade como cursor
-      const options = reset ? { limit } : {
-        limit,
-        before: activities[activities.length - 1]?.created_at
-      };
-
-      const response = await activityApi.getLog(roomId, options);
+      const response = await activityApi.getLog(currentRoomId, { 
+        before: reset ? undefined : lastTimestamp,
+        limit
+      });
       
-      if (!isMountedRef.current) return;
-
       setActivities(prev => {
-        const newActivities = reset ? response : [...prev, ...response];
-        // Manter buffer size para performance
+        const newActivities = reset 
+          ? response
+          : [...prev, ...response];
         return newActivities.slice(-ACTIVITY_BUFFER_SIZE);
       });
       
-      // Se recebemos menos itens que o limite, não há mais para carregar
       setHasMore(response.length >= limit);
-      setError(null);
-    } catch (error) {
-      if (!isMountedRef.current) return;
-      const err = error as Error;
-      setError(err);
-      onError?.(err);
-    } finally {
-      if (isMountedRef.current) {
-        setLoading(false);
+      
+      if (response.length > 0) {
+        setLastTimestamp(response[response.length - 1].created_at);
       }
+      
+      setError(null);
+    } catch (err) {
+      const error = err instanceof Error ? err : new Error('Failed to load activities');
+      setError(error);
+      onError?.(error);
+    } finally {
+      setLoading(false);
       loadingRef.current = false;
     }
-  }, [roomId, limit, activities, onError]);
+  }, [lastTimestamp, limit, onError]); // Remove roomId da dependência e use a ref
 
-  // Load more function
-  const loadMore = useCallback(async () => {
+  // Load more function - agora é assíncrona
+  const loadMore = useCallback(async (): Promise<void> => {
     if (!hasMore || loading) return;
-    await loadActivities(false);
+    return loadActivities(false);
   }, [hasMore, loading, loadActivities]);
 
-  // Subscribe to activity events
+  // Initial load and room change handler
+  useEffect(() => {
+    if (roomId) {
+      loadActivities(true);
+    } else {
+      setActivities([]);
+      setHasMore(false);
+      setLastTimestamp(undefined);
+    }
+  }, [roomId, loadActivities]); // É seguro incluir loadActivities agora que removemos roomId das suas dependências
+
+  // Handle real-time activities via WebSocket
   useEffect(() => {
     const socket = getSocket();
     if (!socket || !roomId) return;
@@ -106,25 +119,7 @@ const useActivity = ({
     };
   }, [roomId]);
 
-  // Reset when room changes
-  useEffect(() => {
-    if (roomId) {
-      loadActivities(true);
-    } else {
-      setActivities([]);
-      setHasMore(false);
-    }
-  }, [roomId, loadActivities]);
-
-  // Cleanup on unmount
-  useEffect(() => {
-    isMountedRef.current = true;
-    return () => {
-      isMountedRef.current = false;
-    };
-  }, []);
-
-  // Get activity summary
+  // Activity summary calculation
   const getActivitySummary = useCallback((): ActivitySummary => {
     const summary: ActivitySummary = {
       totalActivities: activities.length,
@@ -193,7 +188,6 @@ const useActivity = ({
     loading,
     error,
     hasMore,
-    loadActivities,
     loadMore,
     getActivitySummary
   };
