@@ -14,7 +14,6 @@ export interface AuthError {
   details?: unknown;
 }
 
-// Detalhes específicos de erro baseados na documentação
 export interface AuthErrorDetails {
   current_version?: number;
   provided_version?: number;
@@ -29,9 +28,3 @@ export interface AuthenticationError {
   message: string;
   details?: AuthErrorDetails;
 }
-
-// Mapping function to convert from backend to frontend format
-export const mapAuthSuccessToUserInfo = (apiInfo: UserInfo): UserInfo => ({
-  userId: apiInfo.userId,
-  displayName: apiInfo.displayName
-});

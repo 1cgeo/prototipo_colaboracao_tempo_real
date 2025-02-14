@@ -1,9 +1,9 @@
-import React, { createContext, useContext, useState, useCallback, useEffect } from 'react';
+import React, { createContext, useContext, useState, useCallback, useRef } from 'react';
 import { Socket } from 'socket.io-client';
 import { 
   Room, RoomDetails, User, Point, Activity,
   CursorPosition, UserInfo, RoomJoinEvent,
-  RoomStateEvent, CursorMoveEvent
+  RoomStateEvent
 } from '../types';
 import { useWebSocket, useActivity, useRoom } from '../hooks';
 import { storeUserInfo } from '../services/auth';
@@ -51,164 +51,100 @@ export const CollaborationProvider: React.FC<CollaborationProviderProps> = ({
 }) => {
   const [currentUser, setCurrentUser] = useState<UserInfo | null>(null);
   const [error, setError] = useState<Error | null>(null);
-  const [userNamesCache, setUserNamesCache] = useState<Record<string, string>>({});
-  const [initializationComplete, setInitializationComplete] = useState(false);
-
-  console.log('[Collaboration] Provider initializing with userId:', userId);
+  const [initialized, setInitialized] = useState(false);
+  const userNamesRef = useRef<Record<string, string>>({});
 
   // Handle user info received
   const handleUserInfo = useCallback((info: UserInfo) => {
     console.log('[Collaboration] Received user info:', info);
-    
-    if (!info || !info.user_id) {
-      console.error('[Collaboration] Invalid user info received:', info);
-      setError(new Error('Invalid user info received from server'));
+
+    if (!info?.user_id) {
+      console.error('[Collaboration] Invalid user info received');
+      setError(new Error('Invalid user info received'));
       return;
     }
-    
-    setCurrentUser(info);
-    setUserNamesCache(prev => ({
-      ...prev,
-      [info.user_id]: info.display_name
-    }));
-    
+
     try {
+      userNamesRef.current[info.user_id] = info.display_name;
+      
+      setCurrentUser(info);
+      setInitialized(true);
+
       storeUserInfo({
         user_id: info.user_id,
         display_name: info.display_name
       });
-      console.log('[Collaboration] Stored user info successfully');
-    } catch (error) {
-      console.error('[Collaboration] Failed to store user info:', error);
+      
+      console.log('[Collaboration] User info processed successfully');
+    } catch (err) {
+      console.error('[Collaboration] Error processing user info:', err);
+      setError(err instanceof Error ? err : new Error('Failed to process user info'));
     }
-
-    setInitializationComplete(true);
   }, []);
 
-  // Handle room state received
-  const handleRoomState = useCallback((event: RoomStateEvent) => {
-    console.log('[Collaboration] Received room state:', event);
-    
-    // Update user names cache with all users from room
-    event.users.forEach(user => {
-      setUserNamesCache(prev => ({
-        ...prev,
-        [user.id]: user.display_name
-      }));
-    });
+  const handleError = useCallback((err: Error) => {
+    console.error('[Collaboration] Error:', err);
+    setError(err);
   }, []);
 
-  // Initialize useRoom hook
-  const {
-    currentRoom,
-    users,
-    cursors,
-    loading: roomLoading,
-    error: roomError,
-    connected,
-    joinRoom: roomJoin,
-    leaveRoom: roomLeave,
-    createRoom,
-    updateRoom,
-    deleteRoom,
-    moveCursor,
-    isUserInRoom,
-    getUserCursor
-  } = useRoom({
+  const { currentRoom, users, cursors, loading: roomLoading, error: roomError, connected,
+    joinRoom: roomJoin, leaveRoom: roomLeave, createRoom, updateRoom, deleteRoom,
+    moveCursor, isUserInRoom, getUserCursor } = useRoom({
     userId,
-    onError: error => {
-      console.error('[Collaboration] Room error:', error);
-      setError(error);
-    }
+    onError: handleError
   });
 
-  // Initialize WebSocket with all handlers
-  const {
-    socket,
-    connected: wsConnected,
-    authenticating,
-  } = useWebSocket({
+  const { socket, connected: wsConnected, authenticating } = useWebSocket({
     user_id: userId,
     onUserInfo: handleUserInfo,
-    onRoomState: handleRoomState,
-    onJoin: (event: RoomJoinEvent) => {
-      console.log('[Collaboration] User joined:', event);
-      setUserNamesCache(prev => ({
-        ...prev,
-        [event.user_id]: event.display_name
-      }));
-    },
-    onCursorMove: (event: CursorMoveEvent) => {
-      if (currentRoom?.uuid === event.room_id) {
-        setUserNamesCache(prev => ({
-          ...prev,
-          [event.user_id]: event.user_id in prev ? prev[event.user_id] : 'Unknown User'
-        }));
-      }
-    },
-    onError: (error: Error) => {
-      console.error('[Collaboration] WebSocket error:', error);
-      setError(error);
-    }
+    onError: handleError,
+    onJoin: useCallback((event: RoomJoinEvent) => {
+      userNamesRef.current[event.user_id] = event.display_name;
+    }, []),
+    onRoomState: useCallback((event: RoomStateEvent) => {
+      event.users.forEach(user => {
+        userNamesRef.current[user.id] = user.display_name;
+      });
+    }, [])
   });
 
-  // Handle activities with pagination
-  const {
-    activities,
-    loading: activitiesLoading,
-    hasMore: hasMoreActivities,
-    loadMore: loadMoreActivities,
-  } = useActivity({
+  const { activities, loading: activitiesLoading, hasMore: hasMoreActivities,
+    loadMore: loadMoreActivities } = useActivity({
     roomId: currentRoom?.uuid || null,
-    onError: (error: Error) => {
-      console.error('[Collaboration] Activity error:', error);
-      setError(error);
-    }
+    onError: handleError
   });
 
-  // Join room with proper state management
-  const joinRoom = async (roomId: string) => {
-    console.log('[Collaboration] Attempting to join room:', roomId);
+  const joinRoom = useCallback(async (roomId: string) => {
     try {
       await roomJoin(roomId);
       setError(null);
-    } catch (error) {
-      console.error('[Collaboration] Failed to join room:', error);
-      setError(error as Error);
-      throw error;
+    } catch (err) {
+      handleError(err as Error);
+      throw err;
     }
-  };
+  }, [roomJoin, handleError]);
 
-  // Leave room with cleanup
-  const leaveRoom = () => {
-    console.log('[Collaboration] Leaving current room');
+  const leaveRoom = useCallback(() => {
     if (currentRoom) {
       roomLeave();
     }
-  };
+  }, [currentRoom, roomLeave]);
 
-  // Update cursor position
-  const updateCursor = (position: Point) => {
+  const updateCursor = useCallback((position: Point) => {
     if (!currentRoom) return;
     moveCursor({ 
       type: 'Point',
       coordinates: [position.coordinates[0], position.coordinates[1]] 
     });
-  };
+  }, [currentRoom, moveCursor]);
 
-  // Get user display name from cache
   const getUserDisplayName = useCallback((userId: string): string => {
-    return userNamesCache[userId] || 'Unknown User';
-  }, [userNamesCache]);
+    return userNamesRef.current[userId] || 'Unknown User';
+  }, []);
 
-  // Monitor initialization status
-  useEffect(() => {
-    if (!initializationComplete && !authenticating) {
-      console.log('[Collaboration] Still waiting for initialization...');
-    }
-  }, [initializationComplete, authenticating]);
+  const loading = roomLoading || activitiesLoading || authenticating || !initialized;
 
-  const value: CollaborationContextState & CollaborationContextActions = {
+  const value = {
     socket,
     connected: wsConnected && connected,
     authenticating,
@@ -218,7 +154,7 @@ export const CollaborationProvider: React.FC<CollaborationProviderProps> = ({
     cursors,
     activities,
     hasMoreActivities,
-    loading: roomLoading || activitiesLoading || !initializationComplete,
+    loading,
     error: error || roomError,
     joinRoom,
     leaveRoom,
@@ -231,31 +167,6 @@ export const CollaborationProvider: React.FC<CollaborationProviderProps> = ({
     isUserInRoom,
     getUserCursor
   };
-
-  // Log major state changes
-  useEffect(() => {
-    console.log('[Collaboration] State updated:', {
-      connected: wsConnected && connected,
-      authenticating,
-      hasUser: !!currentUser,
-      hasRoom: !!currentRoom,
-      userCount: users.length,
-      loading: roomLoading || activitiesLoading || !initializationComplete,
-      error: error || roomError
-    });
-  }, [
-    wsConnected, 
-    connected, 
-    authenticating, 
-    currentUser, 
-    currentRoom, 
-    users, 
-    roomLoading, 
-    activitiesLoading, 
-    initializationComplete,
-    error,
-    roomError
-  ]);
 
   return (
     <CollaborationContext.Provider value={value}>

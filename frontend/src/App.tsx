@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { ThemeProvider, createTheme } from '@mui/material/styles';
 import CssBaseline from '@mui/material/CssBaseline';
 import { CircularProgress, Box } from '@mui/material';
@@ -25,24 +25,24 @@ const AppContent: React.FC = () => {
   const [initializing, setInitializing] = useState(true);
   const [userInfo, setUserInfo] = useState<{ userId: string; displayName: string } | null>(null);
   const [error, setError] = useState<Error | null>(null);
+  const initializeStartedRef = useRef(false);
 
   useEffect(() => {
+    if (initializeStartedRef.current) return;
+    initializeStartedRef.current = true;
+
     const initializeUser = async () => {
-      console.log('[App] Starting user initialization');
       try {
         const info = getUserInfo();
-        console.log('[App] Retrieved user info:', info);
         
         if (!info || !info.userId) {
           throw new Error('Invalid user info received');
         }
 
         setUserInfo(info);
-        setInitializing(false);
-        console.log('[App] User initialization completed');
       } catch (error) {
-        console.error('[App] Failed to initialize user:', error);
         setError(error as Error);
+      } finally {
         setInitializing(false);
       }
     };
@@ -51,7 +51,6 @@ const AppContent: React.FC = () => {
   }, []);
 
   if (initializing) {
-    console.log('[App] Rendering loading state');
     return (
       <Box 
         sx={{ 
@@ -70,7 +69,6 @@ const AppContent: React.FC = () => {
   }
 
   if (error) {
-    console.error('[App] Rendering error state:', error);
     return (
       <Box 
         sx={{ 
@@ -89,7 +87,6 @@ const AppContent: React.FC = () => {
   }
 
   if (!userInfo) {
-    console.error('[App] No user info available after initialization');
     return (
       <Box 
         sx={{ 
@@ -107,7 +104,6 @@ const AppContent: React.FC = () => {
     );
   }
 
-  console.log('[App] Rendering main application with user:', userInfo.userId);
   return (
     <CollaborationProvider userId={userInfo.userId}>
       <MapProvider>
@@ -120,7 +116,6 @@ const AppContent: React.FC = () => {
 };
 
 const App: React.FC = () => {
-  console.log('[App] Initial render');
   return (
     <ThemeProvider theme={theme}>
       <CssBaseline />
