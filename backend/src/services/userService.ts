@@ -21,36 +21,76 @@ export class UserService {
   }
 
   /**
-   * Create a new anonymous user without room association
+   * Create or update an anonymous user without room association
    */
   async createAnonymousUser(userId: string): Promise<{
     id: string;
     displayName: string;
   }> {
-    const displayName = generateRandomName();
+    try {
+      // First try to find existing user
+      const existingUser = await db.oneOrNone(
+        `
+        SELECT id, display_name as "displayName"
+        FROM anonymous_users
+        WHERE id = $1
+        `,
+        [userId],
+      );
 
-    // Create new user without room association
-    const user = await db.one(
-      `
-      INSERT INTO anonymous_users (id, display_name)
-      VALUES ($1, $2)
-      RETURNING id, display_name as "displayName"
-      `,
-      [userId, displayName],
-    );
+      if (existingUser) {
+        // User exists, update last seen and return existing user
+        await db.none(
+          `
+          UPDATE anonymous_users 
+          SET last_seen_at = NOW()
+          WHERE id = $1
+          `,
+          [userId],
+        );
 
-    // Add to active users cache
-    this.activeUsers.set(user.id, {
-      displayName: user.displayName,
-      lastSeen: new Date(),
-    });
+        logger.info('Updated existing anonymous user', {
+          userId: existingUser.id,
+          displayName: existingUser.displayName,
+        });
 
-    logger.info('Created anonymous user', {
-      userId: user.id,
-      displayName: user.displayName,
-    });
+        // Update active users cache
+        this.activeUsers.set(existingUser.id, {
+          displayName: existingUser.displayName,
+          lastSeen: new Date(),
+        });
 
-    return user;
+        return existingUser;
+      }
+
+      // User doesn't exist, create new one
+      const displayName = generateRandomName();
+
+      const newUser = await db.one(
+        `
+        INSERT INTO anonymous_users (id, display_name)
+        VALUES ($1, $2)
+        RETURNING id, display_name as "displayName"
+        `,
+        [userId, displayName],
+      );
+
+      // Add to active users cache
+      this.activeUsers.set(newUser.id, {
+        displayName: newUser.displayName,
+        lastSeen: new Date(),
+      });
+
+      logger.info('Created new anonymous user', {
+        userId: newUser.id,
+        displayName: newUser.displayName,
+      });
+
+      return newUser;
+    } catch (error) {
+      logger.error('Error in createAnonymousUser:', error);
+      throw error;
+    }
   }
 
   /**

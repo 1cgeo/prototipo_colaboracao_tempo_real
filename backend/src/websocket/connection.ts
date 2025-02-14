@@ -29,13 +29,13 @@ export class ConnectionManager {
     try {
       logger.info('New socket connection attempt', {
         id: socket.id,
-        auth: socket.handshake.auth
+        auth: socket.handshake.auth,
       });
 
       const { user_id } = socket.handshake.auth;
       if (!user_id) {
         logger.error('Connection attempt without user_id', {
-          id: socket.id
+          id: socket.id,
         });
         throw new Error('Authentication failed: missing user_id');
       }
@@ -44,7 +44,7 @@ export class ConnectionManager {
       logger.info('Generated connection ID', {
         connectionId,
         socketId: socket.id,
-        userId: user_id
+        userId: user_id,
       });
 
       // Store connection information
@@ -60,22 +60,22 @@ export class ConnectionManager {
 
       logger.info('Creating anonymous user', {
         userId: user_id,
-        connectionId
+        connectionId,
       });
 
       // Create anonymous user
       const userInfo = await userService.createAnonymousUser(user_id);
-      
+
       logger.info('Anonymous user created, sending user info', {
         userId: userInfo.id,
         displayName: userInfo.displayName,
-        connectionId
+        connectionId,
       });
 
       // Send user info to client
       socket.emit('user:info', {
         user_id: userInfo.id,
-        display_name: userInfo.displayName
+        display_name: userInfo.displayName,
       });
 
       // Setup event listeners
@@ -86,7 +86,7 @@ export class ConnectionManager {
         logger.info('Socket disconnect event', {
           reason,
           connectionId,
-          userId: user_id
+          userId: user_id,
         });
         this.handleDisconnect(socket, reason);
       });
@@ -96,24 +96,27 @@ export class ConnectionManager {
         logger.error('Socket error event', {
           error,
           connectionId,
-          userId: user_id
+          userId: user_id,
         });
         this.handleError(socket, error);
       });
 
       logger.info('Connection setup completed successfully', {
         connectionId,
-        userId: user_id
+        userId: user_id,
       });
     } catch (error) {
       logger.error('Error handling connection:', {
         error,
         socketId: socket.id,
-        auth: socket.handshake.auth
+        auth: socket.handshake.auth,
       });
       socket.emit('error', {
         code: 'CONNECTION_ERROR',
-        message: error instanceof Error ? error.message : 'Failed to establish connection',
+        message:
+          error instanceof Error
+            ? error.message
+            : 'Failed to establish connection',
       });
       socket.disconnect(true);
     }
@@ -133,7 +136,7 @@ export class ConnectionManager {
         eventName,
         args,
         connectionId: socket.data.connection_id,
-        userId: socket.data.user_id
+        userId: socket.data.user_id,
       });
       updateActivity();
     });
@@ -144,7 +147,10 @@ export class ConnectionManager {
     });
   }
 
-  private async handleDisconnect(socket: Socket, reason: string): Promise<void> {
+  private async handleDisconnect(
+    socket: Socket,
+    reason: string,
+  ): Promise<void> {
     const { connection_id, user_id } = socket.data;
     const connection = this.connections.get(connection_id);
 
@@ -152,7 +158,7 @@ export class ConnectionManager {
       logger.warn('Disconnect for unknown connection', {
         connectionId: connection_id,
         userId: user_id,
-        reason
+        reason,
       });
       return;
     }
@@ -160,7 +166,7 @@ export class ConnectionManager {
     logger.info('Handling socket disconnect', {
       connectionId: connection_id,
       userId: user_id,
-      reason
+      reason,
     });
 
     connection.state = 'disconnected';
@@ -175,7 +181,7 @@ export class ConnectionManager {
     if (roomId) {
       logger.info('User was in room, cleaning up', {
         userId: user_id,
-        roomId
+        roomId,
       });
 
       await this.wsState.removeUserFromRoom(socket, user_id);
@@ -208,7 +214,7 @@ export class ConnectionManager {
     logger.error('Handling socket error', {
       error,
       connectionId: socket.data.connection_id,
-      userId: socket.data.user_id
+      userId: socket.data.user_id,
     });
 
     socket.emit('error', errorEvent);

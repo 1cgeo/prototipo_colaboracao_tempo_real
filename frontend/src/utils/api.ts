@@ -1,144 +1,13 @@
-import { io, Socket } from 'socket.io-client';
-import { throttle } from 'lodash';
 import { 
-  APIResponse,
   Room, RoomDetails, RoomCreateInput, RoomUpdateInput,
   Comment, CommentCreateInput, CommentUpdateInput,
-  Point, MapBounds,
-  AuthConfig, UserInfo, ErrorEvent,
-  CursorMoveEvent, WS_EVENTS
+  MapBounds, APIResponse
 } from '../types';
-
-// Extensão do tipo Socket para incluir auth
-interface ExtendedSocket extends Socket {
-  auth: AuthConfig;
-}
 
 // Get base URL from environment
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
 
-// WebSocket Configuration
-const WS_CONFIG = {
-  path: '/socket.io',
-  pingTimeout: 10000,
-  pingInterval: 3000,
-  reconnection: true,
-  reconnectionAttempts: 5,
-  reconnectionDelay: 1000,
-  autoConnect: false
-};
-
-const CURSOR_THROTTLE_DELAY = 100;
-const CURSOR_DISTANCE_THRESHOLD = 0.0001;
-
-let socket: ExtendedSocket | null = null;
-let reconnectTimer: NodeJS.Timeout | null = null;
-let lastCursorPosition: Point | null = null;
-let userInfo: UserInfo | null = null;
-
-// Socket initialization with reconnection logic
-export const initializeSocket = (config: AuthConfig): Promise<void> => {
-  return new Promise((resolve, reject) => {
-    try {
-      console.log('Starting socket initialization...'); // Debug log
-
-      if (socket) {
-        console.log('Closing existing socket connection...'); // Debug log
-        socket.close();
-        socket = null;
-      }
-
-      if (reconnectTimer) {
-        console.log('Clearing existing reconnect timer...'); // Debug log
-        clearTimeout(reconnectTimer);
-        reconnectTimer = null;
-      }
-
-      console.log('Creating new socket connection...'); // Debug log
-      socket = io(API_BASE_URL, {
-        ...WS_CONFIG,
-        auth: config
-      }) as ExtendedSocket;
-
-      // Store original auth for client use
-      socket.auth = config;
-
-      // Listen for connection success
-      socket.on('connect', () => {
-        console.log('Socket connected successfully'); // Debug log
-      });
-
-      // Listen for userInfo event
-      socket.on(WS_EVENTS.USER_INFO, (data: UserInfo) => {
-        console.log('Received user info:', data); // Debug log
-        userInfo = data;
-        resolve();
-      });
-
-      socket.on('error', (error: ErrorEvent) => {
-        console.error('Socket error:', error); // Debug log
-        reject(new Error(error.message));
-      });
-
-      socket.on('connect_error', (error) => {
-        console.error('Socket connection error:', error); // Debug log
-        handleReconnection();
-      });
-
-      socket.on('disconnect', (reason) => {
-        console.log('Socket disconnected:', reason); // Debug log
-        if (reason !== 'io client disconnect') {
-          handleReconnection();
-        }
-      });
-
-      console.log('Connecting socket...'); // Debug log
-      socket.connect();
-      
-      // Add timeout for connection
-      setTimeout(() => {
-        if (!userInfo) {
-          console.error('Socket connection timeout'); // Debug log
-          reject(new Error('Connection timeout'));
-        }
-      }, WS_CONFIG.pingTimeout);
-
-    } catch (error) {
-      console.error('Error in socket initialization:', error); // Debug log
-      reject(error);
-    }
-  });
-};
-
-// Disconnect socket
-export const disconnectSocket = () => {
-  if (socket) {
-    socket.close();
-    socket = null;
-  }
-  if (reconnectTimer) {
-    clearTimeout(reconnectTimer);
-    reconnectTimer = null;
-  }
-  lastCursorPosition = null;
-  userInfo = null;
-};
-
-// Reconnection handler
-const handleReconnection = () => {
-  if (reconnectTimer) return;
-
-  reconnectTimer = setTimeout(() => {
-    if (socket?.connected) return;
-
-    console.log('Attempting to reconnect...');
-    socket?.connect();
-    
-    reconnectTimer = null;
-  }, WS_CONFIG.reconnectionDelay);
-};
-
-// API Response Handler
+// Generic response handler
 async function handleResponse<T>(response: Response): Promise<T> {
   if (!response.ok) {
     const error = await response.json();
@@ -156,196 +25,74 @@ async function handleResponse<T>(response: Response): Promise<T> {
 // Room API
 export const roomApi = {
   list: async (): Promise<Room[]> => {
-    return apiCall<Room[]>('/api/maps');
+    const response = await fetch(`${API_BASE_URL}/api/maps`);
+    return handleResponse<Room[]>(response);
   },
 
   create: async (input: RoomCreateInput): Promise<Room> => {
-    return apiCall<Room>('/api/maps', {
+    const response = await fetch(`${API_BASE_URL}/api/maps`, {
       method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(input),
     });
+    return handleResponse<Room>(response);
   },
 
   get: async (uuid: string): Promise<RoomDetails> => {
-    return apiCall<RoomDetails>(`/api/maps/${uuid}`);
+    const response = await fetch(`${API_BASE_URL}/api/maps/${uuid}`);
+    return handleResponse<RoomDetails>(response);
   },
 
   update: async (uuid: string, input: RoomUpdateInput): Promise<Room> => {
-    return apiCall<Room>(`/api/maps/${uuid}`, {
+    const response = await fetch(`${API_BASE_URL}/api/maps/${uuid}`, {
       method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(input),
     });
+    return handleResponse<Room>(response);
   },
 
   delete: async (uuid: string): Promise<void> => {
-    return apiCall<void>(`/api/maps/${uuid}`, {
+    const response = await fetch(`${API_BASE_URL}/api/maps/${uuid}`, {
       method: 'DELETE',
     });
+    return handleResponse<void>(response);
   },
 };
 
 // Comment API
 export const commentApi = {
   list: async (roomId: string, bounds?: MapBounds): Promise<Comment[]> => {
-    const url = new URL(`/api/maps/${roomId}/comments`, window.location.origin);
+    const url = new URL(`${API_BASE_URL}/api/maps/${roomId}/comments`);
     if (bounds) {
       url.searchParams.append('bounds', JSON.stringify(bounds));
     }
-    return apiCall<Comment[]>(url.toString());
+    const response = await fetch(url.toString());
+    return handleResponse<Comment[]>(response);
   },
 
   create: async (roomId: string, input: CommentCreateInput): Promise<Comment> => {
-    return apiCall<Comment>(`/api/maps/${roomId}/comments`, {
+    const response = await fetch(`${API_BASE_URL}/api/maps/${roomId}/comments`, {
       method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(input),
     });
+    return handleResponse<Comment>(response);
   },
 
   update: async (roomId: string, commentId: string, input: CommentUpdateInput): Promise<Comment> => {
-    return apiCall<Comment>(`/api/maps/${roomId}/comments/${commentId}`, {
+    const response = await fetch(`${API_BASE_URL}/api/maps/${roomId}/comments/${commentId}`, {
       method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(input),
     });
+    return handleResponse<Comment>(response);
   },
 
   delete: async (roomId: string, commentId: string): Promise<void> => {
-    return apiCall<void>(`/api/maps/${roomId}/comments/${commentId}`, {
+    const response = await fetch(`${API_BASE_URL}/api/maps/${roomId}/comments/${commentId}`, {
       method: 'DELETE',
     });
+    return handleResponse<void>(response);
   },
-};
-
-// Generic API call function
-async function apiCall<T>(path: string, options?: RequestInit): Promise<T> {
-  const url = new URL(path, API_BASE_URL);
-  const response = await fetch(url.toString(), {
-    ...options,
-    headers: {
-      'Content-Type': 'application/json',
-      ...options?.headers,
-    },
-  });
-  return handleResponse<T>(response);
-}
-
-// Get socket instance
-export const getSocket = (): ExtendedSocket | null => socket;
-
-// WebSocket event emitters
-export const wsEvents = {
-  joinRoom: (roomId: string) => {
-    if (!socket || !userInfo) throw new Error('Socket not initialized');
-    socket.emit(WS_EVENTS.ROOM_JOIN, {
-      room_id: roomId,
-      user_id: userInfo.user_id,
-      display_name: userInfo.display_name,
-      timestamp: Date.now()
-    });
-  },
-
-  leaveRoom: (roomId: string) => {
-    if (!socket || !userInfo) throw new Error('Socket not initialized');
-    socket.emit(WS_EVENTS.ROOM_LEAVE, {
-      room_id: roomId,
-      user_id: userInfo.user_id,
-      timestamp: Date.now()
-    });
-  },
-
-  moveCursor: throttle((roomId: string, location: Point) => {
-    if (!socket || !userInfo) return;
-
-    if (lastCursorPosition) {
-      const [oldLng, oldLat] = lastCursorPosition.coordinates;
-      const [newLng, newLat] = location.coordinates;
-      const dx = newLng - oldLng;
-      const dy = newLat - oldLat;
-      const distance = Math.sqrt(dx * dx + dy * dy);
-      
-      if (distance < CURSOR_DISTANCE_THRESHOLD) {
-        return;
-      }
-    }
-
-    lastCursorPosition = location;
-
-    const event: CursorMoveEvent = {
-      user_id: userInfo.user_id,
-      room_id: roomId,
-      location,
-      timestamp: Date.now()
-    };
-
-    socket.emit(WS_EVENTS.CURSOR_MOVE, event);
-  }, CURSOR_THROTTLE_DELAY, { leading: true, trailing: true }),
-
-  createComment: (roomId: string, content: string, location: Point) => {
-    if (!socket || !userInfo) throw new Error('Socket not initialized');
-    socket.emit(WS_EVENTS.COMMENT_CREATE, {
-      room_id: roomId,
-      user_id: userInfo.user_id,
-      content,
-      location,
-      timestamp: Date.now()
-    });
-  },
-
-  updateComment: (roomId: string, commentId: string, content: string, version: number) => {
-    if (!socket || !userInfo) throw new Error('Socket not initialized');
-    socket.emit(WS_EVENTS.COMMENT_UPDATE, {
-      room_id: roomId,
-      comment_id: commentId,
-      user_id: userInfo.user_id,
-      content,
-      version,
-      timestamp: Date.now()
-    });
-  },
-
-  deleteComment: (roomId: string, commentId: string, version: number) => {
-    if (!socket || !userInfo) throw new Error('Socket not initialized');
-    socket.emit(WS_EVENTS.COMMENT_DELETE, {
-      room_id: roomId,
-      comment_id: commentId,
-      user_id: userInfo.user_id,
-      version,
-      timestamp: Date.now()
-    });
-  },
-
-  createReply: (roomId: string, commentId: string, content: string) => {
-    if (!socket || !userInfo) throw new Error('Socket not initialized');
-    socket.emit(WS_EVENTS.REPLY_CREATE, {
-      room_id: roomId,
-      comment_id: commentId,
-      user_id: userInfo.user_id,
-      content,
-      timestamp: Date.now()
-    });
-  },
-
-  updateReply: (roomId: string, commentId: string, replyId: string, content: string, version: number) => {
-    if (!socket || !userInfo) throw new Error('Socket not initialized');
-    socket.emit(WS_EVENTS.REPLY_UPDATE, {
-      room_id: roomId,
-      comment_id: commentId,
-      reply_id: replyId,
-      user_id: userInfo.user_id,
-      content,
-      version,
-      timestamp: Date.now()
-    });
-  },
-
-  deleteReply: (roomId: string, commentId: string, replyId: string, version: number) => {
-    if (!socket || !userInfo) throw new Error('Socket not initialized');
-    socket.emit(WS_EVENTS.REPLY_DELETE, {
-      room_id: roomId,
-      comment_id: commentId,
-      reply_id: replyId,
-      user_id: userInfo.user_id,
-      version,
-      timestamp: Date.now()
-    });
-  }
 };

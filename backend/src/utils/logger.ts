@@ -28,7 +28,7 @@ const transports = pino.transport({
         translateTime: 'SYS:standard',
         ignore: 'pid,hostname',
       },
-    }
+    },
   ],
 });
 
@@ -42,8 +42,8 @@ const logger = pino(
         colorize: true,
         translateTime: 'SYS:standard',
         ignore: 'pid,hostname',
-      }
-    }
+      },
+    },
   },
   transports,
 );
@@ -65,7 +65,7 @@ const enhancedLogger = {
   debug: (msg: string, ...args: any[]) => {
     console.debug('[DEBUG]', msg, ...args);
     logger.debug(msg, ...args);
-  }
+  },
 };
 
 export default enhancedLogger;

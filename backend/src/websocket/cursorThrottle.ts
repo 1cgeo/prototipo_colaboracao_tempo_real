@@ -82,13 +82,9 @@ class CursorThrottler {
     // If movement is significant, send update immediately
     if (isSignificant) {
       callback(newPosition);
-      cursorLogger.debug({
-        type: 'cursor_update',
-        userId,
-        roomId,
-        location,
-        immediate: true,
-      });
+      cursorLogger.debug(
+        `Immediate cursor update for user ${userId} in room ${roomId} at ${JSON.stringify(location)}`,
+      );
       return;
     }
 
@@ -98,13 +94,9 @@ class CursorThrottler {
       setTimeout(() => {
         callback(newPosition);
         this.updateQueue.delete(key);
-        cursorLogger.debug({
-          type: 'cursor_update',
-          userId,
-          roomId,
-          location,
-          throttled: true,
-        });
+        cursorLogger.debug(
+          `Throttled cursor update for user ${userId} in room ${roomId} at ${JSON.stringify(location)}`,
+        );
       }, this.THROTTLE_DELAY),
     );
   }
@@ -138,11 +130,11 @@ class CursorThrottler {
 
     if (batch.length > 0) {
       callback(batch);
-      cursorLogger.debug({
-        type: 'cursor_batch_update',
-        count: batch.length,
-        rooms: [...new Set(batch.map(u => u.roomId))],
-      });
+      cursorLogger.debug(
+        `Batch cursor update: ${batch.length} updates across ${
+          new Set(batch.map(u => u.roomId)).size
+        } rooms`,
+      );
     }
   }
 

@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useCallback } from 'react';
+import React, { createContext, useContext, useState, useCallback, useEffect } from 'react';
 import { Socket } from 'socket.io-client';
 import { 
   Room, RoomDetails, User, Point, Activity,
@@ -52,19 +52,43 @@ export const CollaborationProvider: React.FC<CollaborationProviderProps> = ({
   const [currentUser, setCurrentUser] = useState<UserInfo | null>(null);
   const [error, setError] = useState<Error | null>(null);
   const [userNamesCache, setUserNamesCache] = useState<Record<string, string>>({});
+  const [initializationComplete, setInitializationComplete] = useState(false);
+
+  console.log('[Collaboration] Provider initializing with userId:', userId);
 
   // Handle user info received
   const handleUserInfo = useCallback((info: UserInfo) => {
+    console.log('[Collaboration] Received user info:', info);
+    
+    if (!info || !info.user_id) {
+      console.error('[Collaboration] Invalid user info received:', info);
+      setError(new Error('Invalid user info received from server'));
+      return;
+    }
+    
     setCurrentUser(info);
     setUserNamesCache(prev => ({
       ...prev,
       [info.user_id]: info.display_name
     }));
-    storeUserInfo(info);
+    
+    try {
+      storeUserInfo({
+        user_id: info.user_id,
+        display_name: info.display_name
+      });
+      console.log('[Collaboration] Stored user info successfully');
+    } catch (error) {
+      console.error('[Collaboration] Failed to store user info:', error);
+    }
+
+    setInitializationComplete(true);
   }, []);
 
   // Handle room state received
   const handleRoomState = useCallback((event: RoomStateEvent) => {
+    console.log('[Collaboration] Received room state:', event);
+    
     // Update user names cache with all users from room
     event.users.forEach(user => {
       setUserNamesCache(prev => ({
@@ -92,7 +116,10 @@ export const CollaborationProvider: React.FC<CollaborationProviderProps> = ({
     getUserCursor
   } = useRoom({
     userId,
-    onError: setError
+    onError: error => {
+      console.error('[Collaboration] Room error:', error);
+      setError(error);
+    }
   });
 
   // Initialize WebSocket with all handlers
@@ -105,6 +132,7 @@ export const CollaborationProvider: React.FC<CollaborationProviderProps> = ({
     onUserInfo: handleUserInfo,
     onRoomState: handleRoomState,
     onJoin: (event: RoomJoinEvent) => {
+      console.log('[Collaboration] User joined:', event);
       setUserNamesCache(prev => ({
         ...prev,
         [event.user_id]: event.display_name
@@ -112,14 +140,16 @@ export const CollaborationProvider: React.FC<CollaborationProviderProps> = ({
     },
     onCursorMove: (event: CursorMoveEvent) => {
       if (currentRoom?.uuid === event.room_id) {
-        // Handle cursor updates only for current room
         setUserNamesCache(prev => ({
           ...prev,
           [event.user_id]: event.user_id in prev ? prev[event.user_id] : 'Unknown User'
         }));
       }
     },
-    onError: setError
+    onError: (error: Error) => {
+      console.error('[Collaboration] WebSocket error:', error);
+      setError(error);
+    }
   });
 
   // Handle activities with pagination
@@ -130,14 +160,20 @@ export const CollaborationProvider: React.FC<CollaborationProviderProps> = ({
     loadMore: loadMoreActivities,
   } = useActivity({
     roomId: currentRoom?.uuid || null,
-    onError: setError
+    onError: (error: Error) => {
+      console.error('[Collaboration] Activity error:', error);
+      setError(error);
+    }
   });
 
   // Join room with proper state management
   const joinRoom = async (roomId: string) => {
+    console.log('[Collaboration] Attempting to join room:', roomId);
     try {
       await roomJoin(roomId);
+      setError(null);
     } catch (error) {
+      console.error('[Collaboration] Failed to join room:', error);
       setError(error as Error);
       throw error;
     }
@@ -145,6 +181,7 @@ export const CollaborationProvider: React.FC<CollaborationProviderProps> = ({
 
   // Leave room with cleanup
   const leaveRoom = () => {
+    console.log('[Collaboration] Leaving current room');
     if (currentRoom) {
       roomLeave();
     }
@@ -153,13 +190,23 @@ export const CollaborationProvider: React.FC<CollaborationProviderProps> = ({
   // Update cursor position
   const updateCursor = (position: Point) => {
     if (!currentRoom) return;
-    moveCursor([position.coordinates[0], position.coordinates[1]]);
+    moveCursor({ 
+      type: 'Point',
+      coordinates: [position.coordinates[0], position.coordinates[1]] 
+    });
   };
 
   // Get user display name from cache
   const getUserDisplayName = useCallback((userId: string): string => {
     return userNamesCache[userId] || 'Unknown User';
   }, [userNamesCache]);
+
+  // Monitor initialization status
+  useEffect(() => {
+    if (!initializationComplete && !authenticating) {
+      console.log('[Collaboration] Still waiting for initialization...');
+    }
+  }, [initializationComplete, authenticating]);
 
   const value: CollaborationContextState & CollaborationContextActions = {
     socket,
@@ -171,7 +218,7 @@ export const CollaborationProvider: React.FC<CollaborationProviderProps> = ({
     cursors,
     activities,
     hasMoreActivities,
-    loading: roomLoading || activitiesLoading,
+    loading: roomLoading || activitiesLoading || !initializationComplete,
     error: error || roomError,
     joinRoom,
     leaveRoom,
@@ -184,6 +231,31 @@ export const CollaborationProvider: React.FC<CollaborationProviderProps> = ({
     isUserInRoom,
     getUserCursor
   };
+
+  // Log major state changes
+  useEffect(() => {
+    console.log('[Collaboration] State updated:', {
+      connected: wsConnected && connected,
+      authenticating,
+      hasUser: !!currentUser,
+      hasRoom: !!currentRoom,
+      userCount: users.length,
+      loading: roomLoading || activitiesLoading || !initializationComplete,
+      error: error || roomError
+    });
+  }, [
+    wsConnected, 
+    connected, 
+    authenticating, 
+    currentUser, 
+    currentRoom, 
+    users, 
+    roomLoading, 
+    activitiesLoading, 
+    initializationComplete,
+    error,
+    roomError
+  ]);
 
   return (
     <CollaborationContext.Provider value={value}>

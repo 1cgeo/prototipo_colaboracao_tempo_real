@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { 
   Room, RoomDetails, RoomCreateInput, RoomUpdateInput, 
-  User, RoomStateEvent, CursorPosition, Point,
+  User, RoomStateEvent, CursorPosition,
   RoomJoinEvent, RoomLeaveEvent, CursorMoveEvent
 } from '../types';
 import { roomApi } from '../utils/api';
@@ -38,7 +38,12 @@ export const useRoom = ({ userId, onError }: UseRoomOptions) => {
   const maxReconnectAttempts = 5;
 
   // WebSocket integration
-  const { joinRoom: wsJoinRoom, leaveRoom: wsLeaveRoom, updateCursor, connected } = useWebSocket({
+  const { 
+    joinRoom: wsJoinRoom, 
+    leaveRoom: wsLeaveRoom, 
+    updateCursor, 
+    connected 
+  } = useWebSocket({
     user_id: userId,
     onRoomState: (event: RoomStateEvent) => {
       setState(prev => ({
@@ -214,45 +219,6 @@ export const useRoom = ({ userId, onError }: UseRoomOptions) => {
     }
   }, [state.currentRoom, leaveRoom, onError]);
 
-  const listRooms = useCallback(async (): Promise<Room[]> => {
-    setState(prev => ({ ...prev, loading: true }));
-    try {
-      const rooms = await roomApi.list();
-      setState(prev => ({ ...prev, error: null, loading: false }));
-      return rooms;
-    } catch (error) {
-      const err = error as Error;
-      setState(prev => ({ ...prev, error: err, loading: false }));
-      onError?.(err);
-      throw err;
-    }
-  }, [onError]);
-
-  // Cursor management
-  const moveCursor = useCallback((coordinates: [number, number]) => {
-    if (!state.currentRoom) return;
-    
-    const location: Point = {
-      type: 'Point',
-      coordinates
-    };
-
-    updateCursor(location);
-  }, [state.currentRoom, updateCursor]);
-
-  // Utility functions
-  const getUser = useCallback((userId: string): User | undefined => {
-    return state.users.find(user => user.id === userId);
-  }, [state.users]);
-
-  const isUserInRoom = useCallback((userId: string): boolean => {
-    return state.users.some(user => user.id === userId);
-  }, [state.users]);
-
-  const getUserCursor = useCallback((userId: string): CursorPosition | undefined => {
-    return state.cursors[userId];
-  }, [state.cursors]);
-
   // Update connection state effect
   useEffect(() => {
     setState(prev => ({ ...prev, connected }));
@@ -278,10 +244,9 @@ export const useRoom = ({ userId, onError }: UseRoomOptions) => {
     createRoom,
     updateRoom,
     deleteRoom,
-    listRooms,
-    moveCursor,
-    getUser,
-    isUserInRoom,
-    getUserCursor
+    moveCursor: updateCursor,
+    getUser: (userId: string) => state.users.find(user => user.id === userId),
+    isUserInRoom: (userId: string) => state.users.some(user => user.id === userId),
+    getUserCursor: (userId: string) => state.cursors[userId]
   };
 };

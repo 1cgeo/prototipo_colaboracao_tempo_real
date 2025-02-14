@@ -52,13 +52,13 @@ export function setupWebSocket(httpServer: any): void {
     try {
       logger.info('Authentication middleware start', {
         socketId: socket.id,
-        auth: socket.handshake.auth
+        auth: socket.handshake.auth,
       });
 
       const { user_id } = socket.handshake.auth;
       if (!user_id) {
         logger.error('Missing user_id in auth', {
-          socketId: socket.id
+          socketId: socket.id,
         });
         return next(new Error('Authentication failed: missing user_id'));
       }
@@ -67,7 +67,7 @@ export function setupWebSocket(httpServer: any): void {
 
       logger.info('Authentication successful', {
         socketId: socket.id,
-        userId: user_id
+        userId: user_id,
       });
 
       next();
@@ -75,7 +75,7 @@ export function setupWebSocket(httpServer: any): void {
       logger.error('Authentication error:', {
         error,
         socketId: socket.id,
-        auth: socket.handshake.auth
+        auth: socket.handshake.auth,
       });
       next(new Error('Authentication failed'));
     }
@@ -85,7 +85,7 @@ export function setupWebSocket(httpServer: any): void {
   io.on('connection', async (socket: Socket) => {
     logger.info('New socket connection established', {
       socketId: socket.id,
-      auth: socket.handshake.auth
+      auth: socket.handshake.auth,
     });
     try {
       await connectionManager.handleConnection(socket);
@@ -93,7 +93,7 @@ export function setupWebSocket(httpServer: any): void {
 
       logger.info('Connection handler completed', {
         socketId: socket.id,
-        userId: user_id
+        userId: user_id,
       });
 
       // Room Events

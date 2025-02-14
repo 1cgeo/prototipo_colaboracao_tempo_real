@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { Activity, ActivityType } from '../types';
 import { activityApi } from '../utils/activityApi';
-import { getSocket } from '../utils/api';
+import { getSocket } from '../config/socket';
 
 interface UseActivityOptions {
   roomId: string | null;

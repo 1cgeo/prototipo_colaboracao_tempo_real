@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 import { Comment, Point, MapBounds } from '../../types';
-import { getSocket } from '../../utils/api';
+import { getSocket } from '../../config/socket';
 import { useCommentState } from './useCommentState';
 import { useCommentEvents } from './useCommentEvents';
 import { useReplyEvents } from './useReplyEvents';

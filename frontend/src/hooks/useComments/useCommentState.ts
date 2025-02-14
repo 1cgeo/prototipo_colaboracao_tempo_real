@@ -7,9 +7,10 @@ import {
   ReplyUpdateInput,
   MapBounds
 } from '../../types';
-import { wsEvents } from '../../utils/api';
+import { wsEvents } from '../../utils/websocketEvents';
 import { commentApi, replyApi } from './api';
 import { useVersioning } from './useVersioning';
+import { useCollaboration } from '../../contexts/CollaborationContext';
 
 interface UseCommentStateProps {
   roomId: string | null;
@@ -24,6 +25,7 @@ export const useCommentState = ({ roomId, onError }: UseCommentStateProps) => {
   const [bounds, setBounds] = useState<MapBounds | null>(null);
 
   const versioning = useVersioning();
+  const { currentUser } = useCollaboration();
 
   const loadComments = useCallback(async (newBounds?: MapBounds) => {
     if (!roomId) return;
@@ -55,14 +57,14 @@ export const useCommentState = ({ roomId, onError }: UseCommentStateProps) => {
   }, [roomId, bounds, onError, versioning]);
 
   const createComment = useCallback(async (input: CommentCreateInput) => {
-    if (!roomId) throw new Error('No room selected');
+    if (!roomId || !currentUser) throw new Error('No room selected or user not authenticated');
 
     try {
       const comment = await commentApi.create(roomId, input);
       setComments(prev => [...prev, comment]);
       versioning.trackVersion('comment', comment.id, comment.version);
       setError(null);
-      wsEvents.createComment(roomId, input.content, input.location);
+      wsEvents.createComment(roomId, currentUser.user_id, input.content, input.location);
       return comment;
     } catch (error) {
       const err = error as Error;
@@ -70,10 +72,10 @@ export const useCommentState = ({ roomId, onError }: UseCommentStateProps) => {
       onError?.(err);
       throw err;
     }
-  }, [roomId, onError, versioning]);
+  }, [roomId, currentUser, onError, versioning]);
 
   const updateComment = useCallback(async (commentId: string, input: CommentUpdateInput) => {
-    if (!roomId) throw new Error('No room selected');
+    if (!roomId || !currentUser) throw new Error('No room selected or user not authenticated');
 
     versioning.addPendingChange('comment', commentId, {
       type: 'update',
@@ -100,7 +102,7 @@ export const useCommentState = ({ roomId, onError }: UseCommentStateProps) => {
       setComments(prev => prev.map(c => c.id === comment.id ? comment : c));
       versioning.trackVersion('comment', comment.id, comment.version);
       setError(null);
-      wsEvents.updateComment(roomId, commentId, input.content, input.version);
+      wsEvents.updateComment(roomId, commentId, currentUser.user_id, input.content, input.version);
       return comment;
     } catch (error) {
       // Revert optimistic update on error
@@ -121,10 +123,10 @@ export const useCommentState = ({ roomId, onError }: UseCommentStateProps) => {
     } finally {
       versioning.removePendingChange('comment', commentId);
     }
-  }, [roomId, onError, versioning]);
+  }, [roomId, currentUser, onError, versioning]);
 
   const deleteComment = useCallback(async (commentId: string, version: number) => {
-    if (!roomId) throw new Error('No room selected');
+    if (!roomId || !currentUser) throw new Error('No room selected or user not authenticated');
 
     versioning.addPendingChange('comment', commentId, {
       type: 'delete',
@@ -140,17 +142,17 @@ export const useCommentState = ({ roomId, onError }: UseCommentStateProps) => {
         setSelectedComment(null);
       }
       setError(null);
-      wsEvents.deleteComment(roomId, commentId, version);
+      wsEvents.deleteComment(roomId, commentId, currentUser.user_id, version);
     } catch (error) {
       const err = error as Error;
       setError(err);
       onError?.(err);
       throw err;
     }
-  }, [roomId, selectedComment, onError, versioning]);
+  }, [roomId, currentUser, selectedComment, onError, versioning]);
 
   const createReply = useCallback(async (commentId: string, input: ReplyCreateInput) => {
-    if (!roomId) throw new Error('No room selected');
+    if (!roomId || !currentUser) throw new Error('No room selected or user not authenticated');
 
     try {
       const reply = await replyApi.create(roomId, commentId, input);
@@ -165,7 +167,7 @@ export const useCommentState = ({ roomId, onError }: UseCommentStateProps) => {
       }));
       versioning.trackVersion('reply', reply.id, reply.version);
       setError(null);
-      wsEvents.createReply(roomId, commentId, input.content);
+      wsEvents.createReply(roomId, commentId, currentUser.user_id, input.content);
       return reply;
     } catch (error) {
       const err = error as Error;
@@ -173,14 +175,14 @@ export const useCommentState = ({ roomId, onError }: UseCommentStateProps) => {
       onError?.(err);
       throw err;
     }
-  }, [roomId, onError, versioning]);
+  }, [roomId, currentUser, onError, versioning]);
 
   const updateReply = useCallback(async (
     commentId: string,
     replyId: string,
     input: ReplyUpdateInput
   ) => {
-    if (!roomId) throw new Error('No room selected');
+    if (!roomId || !currentUser) throw new Error('No room selected or user not authenticated');
 
     versioning.addPendingChange('reply', replyId, {
       type: 'update',
@@ -223,7 +225,7 @@ export const useCommentState = ({ roomId, onError }: UseCommentStateProps) => {
       }));
       versioning.trackVersion('reply', reply.id, reply.version);
       setError(null);
-      wsEvents.updateReply(roomId, commentId, replyId, input.content, input.version);
+      wsEvents.updateReply(roomId, commentId, replyId, currentUser.user_id, input.content, input.version);
       return reply;
     } catch (error) {
       // Revert optimistic update on error
@@ -251,14 +253,14 @@ export const useCommentState = ({ roomId, onError }: UseCommentStateProps) => {
     } finally {
       versioning.removePendingChange('reply', replyId);
     }
-  }, [roomId, onError, versioning]);
+  }, [roomId, currentUser, onError, versioning]);
 
   const deleteReply = useCallback(async (
     commentId: string,
     replyId: string,
     version: number
   ) => {
-    if (!roomId) throw new Error('No room selected');
+    if (!roomId || !currentUser) throw new Error('No room selected or user not authenticated');
 
     versioning.addPendingChange('reply', replyId, {
       type: 'delete',
@@ -279,14 +281,14 @@ export const useCommentState = ({ roomId, onError }: UseCommentStateProps) => {
       }));
       versioning.removeVersionTracking('reply', replyId);
       setError(null);
-      wsEvents.deleteReply(roomId, commentId, replyId, version);
+      wsEvents.deleteReply(roomId, commentId, replyId, currentUser.user_id, version);
     } catch (error) {
       const err = error as Error;
       setError(err);
       onError?.(err);
       throw err;
     }
-  }, [roomId, onError, versioning]);
+  }, [roomId, currentUser, onError, versioning]);
 
   return {
     comments,
