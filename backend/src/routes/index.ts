@@ -1,37 +1,28 @@
-import { Router } from 'express';
-import { v4 as uuidv4 } from 'uuid';
-import { generateRandomName } from '../utils/nameGenerator.js';
-import mapRoutes from './maps.js';
+// src/routes/index.ts
+import express from 'express';
+import * as mapsController from '../controllers/maps.controller.js';
+import * as commentsController from '../controllers/comments.controller.js';
+import * as repliesController from '../controllers/replies.controller.js';
 
-const router = Router();
+const router = express.Router();
 
-// Basic authentication middleware that generates anonymous user info
-router.use((req, _res, next) => {
-  // If user info is not in headers, generate new anonymous user
-  if (!req.headers['x-user-id']) {
-    req.body.userId = uuidv4();
-    req.body.userName = generateRandomName();
-  } else {
-    req.body.userId = req.headers['x-user-id'];
-    req.body.userName = req.headers['x-user-name'] || generateRandomName();
-  }
-  next();
-});
+// Maps routes
+router.get('/maps', mapsController.getMaps);
+router.get('/maps/:id', mapsController.getMap);
+router.post('/maps', mapsController.createMap);
+router.put('/maps/:id', mapsController.updateMap);
+router.delete('/maps/:id', mapsController.deleteMap);
 
-// Health check route
-router.get('/health', (_req, res) => {
-  res.json({ status: 'ok' });
-});
+// Comments routes
+router.get('/maps/:mapId/comments', commentsController.getMapComments);
+router.post('/comments', commentsController.createComment);
+router.put('/comments/:id', commentsController.updateComment);
+router.put('/comments/:id/position', commentsController.updateCommentPosition);
+router.delete('/comments/:id', commentsController.deleteComment);
 
-// API routes
-router.use('/maps', mapRoutes);
-
-// Error handling for routes that don't exist
-router.use((_req, res) => {
-  res.status(404).json({
-    status: 'error',
-    message: 'Route not found',
-  });
-});
+// Replies routes
+router.post('/replies', repliesController.createReply);
+router.put('/replies/:id', repliesController.updateReply);
+router.delete('/replies/:id', repliesController.deleteReply);
 
 export default router;

@@ -1,61 +1,76 @@
-import { z } from 'zod';
+// src/types/index.ts
+export interface Map {
+  id: number;
+  name: string;
+  description: string | null;
+  created_at: Date;
+}
 
-// Base schemas for request validation
-const PointSchema = z.object({
-  type: z.literal('Point'),
-  coordinates: z.tuple([z.number(), z.number()]),
-});
+export interface Position {
+  lng: number;
+  lat: number;
+}
 
-export type Point = z.infer<typeof PointSchema>;
+export interface User {
+  id: string;
+  name: string;
+  position: Position;
+}
 
-// Request type for creating map rooms
-export const CreateMapRoomRequestSchema = z.object({
-  name: z.string().min(1).max(255),
-  description: z.string().optional(),
-});
+export interface Rooms {
+  [roomId: string]: {
+    [userId: string]: User;
+  };
+}
 
-export type CreateMapRoomRequest = z.infer<typeof CreateMapRoomRequestSchema>;
+export interface Comment {
+  id: number;
+  map_id: number;
+  user_id: string;
+  user_name: string;
+  content: string;
+  lng: number;
+  lat: number;
+  created_at: Date;
+  updated_at: Date;
+  replies?: Reply[];
+}
 
-// Request types for comments
-export const CreateCommentRequestSchema = z.object({
-  content: z.string().min(1),
-  location: PointSchema,
-  comment_id: z.string().uuid().optional(),
-});
+export interface Reply {
+  id: number;
+  comment_id: number;
+  user_id: string;
+  user_name: string;
+  content: string;
+  created_at: Date;
+  updated_at: Date;
+}
 
-export type CreateCommentRequest = z.infer<typeof CreateCommentRequestSchema>;
+export interface CommentCreateData {
+  map_id: number;
+  user_id: string;
+  user_name: string;
+  content: string;
+  lng: number;
+  lat: number;
+}
 
-export const UpdateCommentRequestSchema = z.object({
-  content: z.string().min(1),
-  version: z.number().int().min(1),
-  comment_id: z.string().uuid(),
-});
+export interface CommentUpdateData {
+  content: string;
+}
 
-export type UpdateCommentRequest = z.infer<typeof UpdateCommentRequestSchema>;
+export interface CommentPositionUpdateData {
+  lng: number;
+  lat: number;
+}
 
-// Request types for replies
-export const CreateReplyRequestSchema = z.object({
-  content: z.string().min(1),
-  comment_id: z.string().uuid(),
-});
+export interface ReplyCreateData {
+  comment_id: number;
+  user_id: string;
+  user_name: string;
+  content: string;
+}
 
-export type CreateReplyRequest = z.infer<typeof CreateReplyRequestSchema>;
-
-export const UpdateReplyRequestSchema = z.object({
-  content: z.string().min(1),
-  version: z.number().int().min(1),
-  reply_id: z.string().uuid(),
-});
-
-export type UpdateReplyRequest = z.infer<typeof UpdateReplyRequestSchema>;
-
-// Activity types
-export type ActivityType =
-  | 'COMMENT_CREATED'
-  | 'COMMENT_UPDATED'
-  | 'COMMENT_DELETED'
-  | 'REPLY_CREATED'
-  | 'REPLY_UPDATED'
-  | 'REPLY_DELETED'
-  | 'USER_JOINED'
-  | 'USER_LEFT';
+export interface ReplyUpdateData {
+  content: string;
+}

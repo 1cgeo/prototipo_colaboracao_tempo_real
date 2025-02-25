@@ -1,75 +1,59 @@
+// src/utils/nameGenerator.ts
 const adjectives = [
-  'Happy',
-  'Cheerful',
-  'Bright',
-  'Clever',
-  'Gentle',
-  'Kind',
-  'Quick',
-  'Calm',
-  'Wise',
+  'Amazing',
   'Brave',
-  'Dancing',
-  'Dashing',
-  'Elegant',
+  'Calm',
+  'Daring',
+  'Eager',
   'Fancy',
-  'Graceful',
+  'Gentle',
+  'Happy',
+  'Intrepid',
+  'Jolly',
+  'Kind',
   'Lively',
-  'Merry',
-  'Peaceful',
-  'Proud',
-  'Silly',
+  'Mighty',
+  'Noble',
+  'Polite',
+  'Quick',
+  'Radiant',
   'Smart',
-  'Sweet',
-  'Thoughtful',
-  'Wandering',
+  'Talented',
+  'Upbeat',
+  'Vibrant',
   'Witty',
   'Zealous',
-  'Charming',
-  'Creative',
-  'Friendly',
-  'Jolly',
 ];
 
-const animals = [
-  'Penguin',
-  'Elephant',
-  'Giraffe',
+const nouns = [
+  'Alligator',
+  'Badger',
+  'Cheetah',
   'Dolphin',
-  'Kangaroo',
+  'Elephant',
+  'Falcon',
+  'Giraffe',
+  'Hedgehog',
+  'Iguana',
+  'Jaguar',
   'Koala',
   'Lion',
-  'Tiger',
-  'Panda',
-  'Rabbit',
+  'Monkey',
+  'Narwhal',
+  'Octopus',
+  'Penguin',
+  'Quokka',
   'Raccoon',
-  'Fox',
-  'Wolf',
-  'Bear',
-  'Deer',
-  'Duck',
-  'Eagle',
-  'Falcon',
-  'Hawk',
-  'Owl',
-  'Peacock',
-  'Swan',
-  'Zebra',
-  'Cheetah',
-  'Leopard',
-  'Lynx',
   'Squirrel',
-  'Hedgehog',
-  'Otter',
-  'Seal',
+  'Tiger',
+  'Unicorn',
+  'Viper',
+  'Wolf',
 ];
 
-/**
- * Generates a random name by combining an adjective and an animal
- * @returns {string} A random name like "Happy Penguin"
- */
-export const generateRandomName = (): string => {
-  const adjective = adjectives[Math.floor(Math.random() * adjectives.length)];
-  const animal = animals[Math.floor(Math.random() * animals.length)];
-  return `${adjective} ${animal}`;
-};
+export function generateRandomName(): string {
+  const randomAdjective =
+    adjectives[Math.floor(Math.random() * adjectives.length)];
+  const randomNoun = nouns[Math.floor(Math.random() * nouns.length)];
+  return `${randomAdjective}${randomNoun}`;
+}
