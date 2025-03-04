@@ -1,4 +1,4 @@
-// src/api/maps.ts
+// Path: api\maps.ts
 import { QueryClient } from '@tanstack/react-query';
 import { Map, MapFormData } from '../types';
 

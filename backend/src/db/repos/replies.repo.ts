@@ -1,4 +1,4 @@
-// src/db/repos/replies.repo.ts
+// Path: db\repos\replies.repo.ts
 import { IDatabase } from 'pg-promise';
 import { Reply } from '../../types/index.js';
 

@@ -1,4 +1,4 @@
-// src/routes/index.ts
+// Path: routes\index.ts
 import express from 'express';
 import * as mapsController from '../controllers/maps.controller.js';
 import * as commentsController from '../controllers/comments.controller.js';

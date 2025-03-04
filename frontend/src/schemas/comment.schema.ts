@@ -1,3 +1,4 @@
+// Path: schemas\comment.schema.ts
 import { z } from 'zod';
 
 export const commentFormSchema = z.object({

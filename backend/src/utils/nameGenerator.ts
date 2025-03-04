@@ -1,4 +1,4 @@
-// src/utils/nameGenerator.ts
+// Path: utils\nameGenerator.ts
 const adjectives = [
   'Amazing',
   'Brave',

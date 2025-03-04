@@ -20,15 +20,15 @@ export default defineConfig(({ mode }) => {
       viteCompression()
     ],
     server: {
-      port: 3001,
+      port: 3000,
       proxy: {
         '/api': {
-          target: env.VITE_API_URL || 'http://localhost:3000',
+          target: env.VITE_API_URL || 'http://localhost:5000',
           changeOrigin: true,
           secure: false
         },
         '/socket.io': {
-          target: env.VITE_API_URL || 'http://localhost:3000',
+          target: env.VITE_API_URL || 'http://localhost:5000',
           changeOrigin: true,
           ws: true
         }
@@ -45,7 +45,7 @@ export default defineConfig(({ mode }) => {
               '@emotion/react',
               '@emotion/styled'
             ],
-            'vendor-utils': ['axios', 'lodash', 'socket.io-client'],
+            'vendor-utils': ['lodash', 'socket.io-client'],
             'vendor-maps': ['maplibre-gl']
           }
         }

@@ -1,4 +1,4 @@
-// src/components/AddCommentLayer.tsx
+// Path: components\AddCommentLayer.tsx
 import React, { useState } from 'react';
 import { useUserStore } from '../store/useUserStore';
 import { useCommentStore } from '../store/useCommentStore';

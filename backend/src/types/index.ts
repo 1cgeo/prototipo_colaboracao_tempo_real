@@ -1,4 +1,4 @@
-// src/types/index.ts
+// Path: types\index.ts
 export interface Map {
   id: number;
   name: string;

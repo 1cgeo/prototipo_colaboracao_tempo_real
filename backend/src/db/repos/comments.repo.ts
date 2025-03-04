@@ -1,4 +1,4 @@
-// src/db/repos/comments.repo.ts
+// Path: db\repos\comments.repo.ts
 import { IDatabase } from 'pg-promise';
 import { Comment, Reply } from '../../types/index.js';
 

@@ -1,4 +1,4 @@
-// src/types/db.ts
+// Path: types\db.ts
 import { IDatabase } from 'pg-promise';
 import { Map, Comment, Reply } from './index.js';
 

@@ -1,4 +1,4 @@
-// src/api/comments.ts
+// Path: api\comments.ts
 import { Comment, CommentFormData, Reply, ReplyFormData } from '../types';
 
 const API_URL = import.meta.env.VITE_API_URL;

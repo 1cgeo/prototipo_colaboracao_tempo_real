@@ -1,4 +1,4 @@
-// src/db/repos/maps.repo.ts
+// Path: db\repos\maps.repo.ts
 import { IDatabase } from 'pg-promise';
 import { Map } from '../../types/index.js';
 

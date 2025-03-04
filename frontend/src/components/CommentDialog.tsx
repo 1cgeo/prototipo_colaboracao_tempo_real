@@ -1,4 +1,4 @@
-// src/components/CommentDialog.tsx
+// Path: components\CommentDialog.tsx
 import React, { useState, useEffect } from 'react';
 import { useUserStore } from '../store/useUserStore';
 import { useCommentStore } from '../store/useCommentStore';
@@ -201,10 +201,11 @@ const CommentDialog: React.FC<CommentDialogProps> = ({ comment, onClose }) => {
   
   return (
     <Dialog open={!!comment} onClose={onClose} maxWidth="sm" fullWidth>
+      {/* FIX: DialogTitle already renders an h2, so we don't use Typography variant="h6" inside */}
       <DialogTitle sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <Typography variant="h6">
+        <Box component="div" sx={{ typography: 'subtitle1', fontWeight: 'bold' }}>
           Comment by {comment.user_name}
-        </Typography>
+        </Box>
         <IconButton onClick={onClose} size="small">
           <CloseIcon />
         </IconButton>
@@ -279,6 +280,10 @@ const CommentDialog: React.FC<CommentDialogProps> = ({ comment, onClose }) => {
               </Box>
             )}
           </Stack>
+          
+          <Typography variant="caption" color="text.secondary" display="block" mt={1}>
+            Location: {comment.lng.toFixed(6)}, {comment.lat.toFixed(6)}
+          </Typography>
         </Box>
         
         <Divider sx={{ my: 2 }} />

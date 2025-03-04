@@ -1,4 +1,4 @@
-// src/schemas/map.schema.ts
+// Path: schemas\map.schema.ts
 import { z } from 'zod';
 
 export const mapSchema = z.object({
