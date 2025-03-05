@@ -1,5 +1,5 @@
 // Path: components\UserMarker.tsx
-import React from 'react';
+import React, { memo } from 'react';
 import { Marker } from 'react-map-gl/maplibre';
 import { User } from '../types';
 import { useTheme } from '@mui/material';
@@ -10,7 +10,8 @@ interface UserMarkerProps {
   socketId: string | undefined;
 }
 
-const UserMarker: React.FC<UserMarkerProps> = ({ user, isSelf, socketId }) => {
+// Using React.memo to avoid unnecessary re-renders
+const UserMarker: React.FC<UserMarkerProps> = memo(({ user, socketId: _socketId }) => {
   const theme = useTheme();
   
   // Ensure we have valid position data
@@ -24,7 +25,6 @@ const UserMarker: React.FC<UserMarkerProps> = ({ user, isSelf, socketId }) => {
       key={user.id}
       longitude={user.position.lng}
       latitude={user.position.lat}
-      // Use consistent anchor point
       anchor="center"
     >
       <div>
@@ -33,13 +33,13 @@ const UserMarker: React.FC<UserMarkerProps> = ({ user, isSelf, socketId }) => {
             width: '10px',
             height: '10px',
             borderRadius: '50%',
-            backgroundColor: user.id === socketId ? theme.palette.primary.main : theme.palette.secondary.main,
+            backgroundColor: theme.palette.secondary.main,
             border: '2px solid white',
             boxShadow: '0px 2px 4px rgba(0,0,0,0.2)',
           }}
         />
         
-        {/* Name label - positioned using fixed offsets */}
+        {/* Name label */}
         <div
           style={{
             position: 'absolute',
@@ -52,16 +52,19 @@ const UserMarker: React.FC<UserMarkerProps> = ({ user, isSelf, socketId }) => {
             whiteSpace: 'nowrap',
             boxShadow: '0px 1px 3px rgba(0,0,0,0.1)',
             border: '1px solid',
-            borderColor: user.id === socketId ? theme.palette.primary.main : theme.palette.secondary.main,
+            borderColor: theme.palette.secondary.main,
             zIndex: 2,
             pointerEvents: 'none'
           }}
         >
-          {user.name} {isSelf ? '(You)' : ''}
+          {user.name}
         </div>
       </div>
     </Marker>
   );
-};
+});
+
+// Add displayName for better debugging
+UserMarker.displayName = 'UserMarker';
 
 export default UserMarker;

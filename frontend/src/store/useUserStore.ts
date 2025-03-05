@@ -67,12 +67,29 @@ export const useUserStore = create<UserState>((set) => ({
     }
     
     set(state => {
-      // If cursor tracking is disabled, still update the current user
-      // but don't update other users' positions
-      if (state.disableCursorTracking && 
-          state.currentUser && 
-          user.id !== state.currentUser.id) {
+      // If cursor tracking is disabled, don't update any positions
+      if (state.disableCursorTracking) {
         return state;
+      }
+      
+      // Don't update your own position from server broadcasts
+      // This prevents your own cursor from being tracked unnecessarily
+      if (state.currentUser && user.id === state.currentUser.id) {
+        // Only update non-position properties if needed
+        const currentUser = state.users[user.id];
+        if (currentUser && user.name !== currentUser.name) {
+          // Update only if a non-position property changed
+          return {
+            users: {
+              ...state.users,
+              [user.id]: {
+                ...currentUser,
+                name: user.name
+              }
+            }
+          };
+        }
+        return state; // No changes needed
       }
       
       // Ensure user has valid position

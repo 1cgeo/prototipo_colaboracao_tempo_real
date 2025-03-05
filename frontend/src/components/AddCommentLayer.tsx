@@ -1,5 +1,5 @@
 // Path: components\AddCommentLayer.tsx
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useUserStore } from '../store/useUserStore';
 import { useCommentStore } from '../store/useCommentStore';
 import { useMutation } from '@tanstack/react-query';
@@ -36,7 +36,14 @@ const AddCommentLayer: React.FC<AddCommentLayerProps> = ({
 }) => {
   const [content, setContent] = useState('');
   const [error, setError] = useState<string | null>(null);
-  const { currentUser } = useUserStore();
+  
+  // Fix: Get currentUser directly instead of creating a new object
+  const currentUser = useUserStore(state => state.currentUser);
+  
+  // Memoize any derived data we need
+  const currentUserId = useMemo(() => currentUser?.id || '', [currentUser?.id]);
+  const currentUserName = useMemo(() => currentUser?.name || '', [currentUser?.name]);
+  
   const { addComment } = useCommentStore();
   
   const createCommentMutation = useMutation({
@@ -46,8 +53,8 @@ const AddCommentLayer: React.FC<AddCommentLayerProps> = ({
       }
       return createComment(
         mapId,
-        currentUser.id,
-        currentUser.name,
+        currentUserId,
+        currentUserName,
         position,
         data
       );

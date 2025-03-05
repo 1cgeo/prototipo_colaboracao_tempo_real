@@ -1,5 +1,5 @@
 // Path: components\MapContainer.tsx
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { Map, MapRef, ViewStateChangeEvent, MapLayerMouseEvent } from 'react-map-gl/maplibre';
 import { 
   Box, 
@@ -97,6 +97,9 @@ const MapContainer: React.FC<MapContainerProps> = ({
   
   // Store previous users for cleanup check
   const prevUsersRef = useRef<string[]>([]);
+  
+  // Memoize socket ID for stable comparisons
+  const socketId = useMemo(() => socketRef.current?.id, [socketRef.current?.id]);
   
   // Comment position mutation
   const updateCommentPositionMutation = useMutation({
@@ -224,7 +227,6 @@ const MapContainer: React.FC<MapContainerProps> = ({
     if (!mapRef || !socketRef.current) return;
     
     // Get coordinates directly from the event's lngLat
-    // No additional transformations needed - let the map handle it
     const lngLat = {
       lng: e.lngLat.lng,
       lat: e.lngLat.lat
@@ -233,32 +235,38 @@ const MapContainer: React.FC<MapContainerProps> = ({
     // Update local mouse position state
     setMousePosition(lngLat);
     
-    // Send raw coordinates to server
+    // Send raw coordinates to server with increased throttle time
     socketRef.current.emit('mousemove', lngLat);
-  }, 100), [mapRef, socketRef, isDraggingComment, isAddingComment, disableCursorTracking]);
+  }, 150), [mapRef, socketRef, isDraggingComment, isAddingComment, disableCursorTracking]);
   
   const userCount = Object.keys(users).length;
   
-  // Safely render markers with defensive checks
+  // Safely render markers with defensive checks - don't show your own cursor
   const renderUserMarkers = () => {
-    return Object.values(users).map(user => {
-      // Skip rendering if user or position is undefined
-      if (!user || !user.position || typeof user.position.lng === 'undefined' || typeof user.position.lat === 'undefined') {
-        console.warn("Invalid user data:", user);
-        return null;
-      }
-      
-      return (
+    return Object.values(users)
+      .filter(user => {
+        // Skip rendering yourself
+        if (user.id === socketId) {
+          return false;
+        }
+        
+        // Skip rendering if user or position is undefined
+        if (!user || !user.position || typeof user.position.lng === 'undefined' || typeof user.position.lat === 'undefined') {
+          console.warn("Invalid user data:", user);
+          return false;
+        }
+        
+        return true;
+      })
+      .map(user => (
         <UserMarker
           key={`user-${user.id}`}
           user={user}
-          isSelf={user.id === socketRef.current?.id}
-          socketId={socketRef.current?.id}
+          isSelf={false} // Always false since we filter out self
+          socketId={socketId}
         />
-      );
-    }).filter(Boolean); // Filter out null entries
+      ));
   };
-  
   
   const renderCommentMarkers = () => {
     if (!comments || comments.length === 0) {
@@ -373,7 +381,7 @@ const MapContainer: React.FC<MapContainerProps> = ({
             <Box sx={{ display: 'flex', alignItems: 'center' }}>
               <PersonPinIcon sx={{ mr: 1 }} />
               <Typography variant="body2">
-                {userCount} user{userCount !== 1 ? 's' : ''} online
+                {userCount - (socketId && users[socketId] ? 1 : 0)} user{userCount !== 2 ? 's' : ''} online
               </Typography>
             </Box>
             
@@ -494,22 +502,42 @@ const MapContainer: React.FC<MapContainerProps> = ({
           
           <Collapse in={usersExpanded} timeout="auto">
             <List component="div" disablePadding>
-              {Object.values(users).map(user => (
-                <ListItem key={user.id} sx={{ pl: 4 }}>
+              {/* Show yourself first with a special indicator */}
+              {currentUser && (
+                <ListItem sx={{ pl: 4, bgcolor: 'rgba(25, 118, 210, 0.08)' }}>
                   <ListItemText 
-                    primary={user.name + (user.id === socketRef.current?.id ? ' (You)' : '')}
+                    primary={`${currentUser.name} (You)`}
                     primaryTypographyProps={{
-                      color: user.id === socketRef.current?.id ? 'primary' : 'initial',
-                      fontWeight: user.id === socketRef.current?.id ? 'bold' : 'normal'
+                      color: 'primary',
+                      fontWeight: 'bold'
                     }}
-                    secondary={
-                      user.position ? 
-                        `${user.position.lng.toFixed(6)}, ${user.position.lat.toFixed(6)}` : 
-                        'No position'
-                    }
                   />
                 </ListItem>
-              ))}
+              )}
+              
+              {/* Then show other users */}
+              {Object.values(users)
+                .filter(user => user.id !== socketId)
+                .map(user => (
+                  <ListItem key={user.id} sx={{ pl: 4 }}>
+                    <ListItemText 
+                      primary={user.name}
+                      secondary={
+                        user.position ? 
+                          `${user.position.lng.toFixed(6)}, ${user.position.lat.toFixed(6)}` : 
+                          'No position'
+                      }
+                    />
+                  </ListItem>
+                ))
+              }
+              
+              {/* If no other users, show message */}
+              {Object.values(users).filter(user => user.id !== socketId).length === 0 && (
+                <ListItem sx={{ pl: 4 }}>
+                  <ListItemText secondary="No other users online" />
+                </ListItem>
+              )}
             </List>
           </Collapse>
         </List>

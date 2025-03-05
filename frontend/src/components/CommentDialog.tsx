@@ -1,5 +1,5 @@
 // Path: components\CommentDialog.tsx
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useUserStore } from '../store/useUserStore';
 import { useCommentStore } from '../store/useCommentStore';
 import { Comment } from '../types';
@@ -45,10 +45,12 @@ interface CommentDialogProps {
 }
 
 const CommentDialog: React.FC<CommentDialogProps> = ({ comment, onClose }) => {
-  const currentUser = useUserStore(state => ({
-    id: state.currentUser?.id,
-    name: state.currentUser?.name
-  }));
+  // Fix: Get currentUser directly instead of creating a new object
+  const currentUser = useUserStore(state => state.currentUser);
+  
+  // Memoize any derived data we need
+  const currentUserId = useMemo(() => currentUser?.id || '', [currentUser?.id]);
+  const currentUserName = useMemo(() => currentUser?.name || '', [currentUser?.name]);
   
   const { 
     updateComment: updateCommentInStore, 
@@ -75,7 +77,7 @@ const CommentDialog: React.FC<CommentDialogProps> = ({ comment, onClose }) => {
   
   const updateCommentMutation = useMutation({
     mutationFn: ({ id, content }: { id: number, content: string }) => 
-      updateComment(id, currentUser.id!, { content }),
+      updateComment(id, currentUserId, { content }),
     onSuccess: (updatedComment) => {
       updateCommentInStore(updatedComment);
       setIsEditing(false);
@@ -83,7 +85,7 @@ const CommentDialog: React.FC<CommentDialogProps> = ({ comment, onClose }) => {
   });
   
   const deleteCommentMutation = useMutation({
-    mutationFn: (commentId: number) => deleteComment(commentId, currentUser.id!),
+    mutationFn: (commentId: number) => deleteComment(commentId, currentUserId),
     onSuccess: (_, commentId) => {
       deleteCommentInStore(commentId);
       onClose();
@@ -92,7 +94,7 @@ const CommentDialog: React.FC<CommentDialogProps> = ({ comment, onClose }) => {
   
   const createReplyMutation = useMutation({
     mutationFn: ({ commentId, content }: { commentId: number, content: string }) => 
-      createReply(commentId, currentUser.id!, currentUser.name!, { content }),
+      createReply(commentId, currentUserId, currentUserName, { content }),
     onSuccess: (newReply, { commentId }) => {
       addReplyInStore(newReply, commentId);
       setReplyContent('');
@@ -102,7 +104,7 @@ const CommentDialog: React.FC<CommentDialogProps> = ({ comment, onClose }) => {
   
   const updateReplyMutation = useMutation({
     mutationFn: ({ id, content }: { id: number, content: string }) => 
-      updateReply(id, currentUser.id!, { content }),
+      updateReply(id, currentUserId, { content }),
     onSuccess: (updatedReply) => {
       updateReplyInStore(updatedReply, updatedReply.comment_id);
       setEditingReplyId(null);
@@ -110,7 +112,7 @@ const CommentDialog: React.FC<CommentDialogProps> = ({ comment, onClose }) => {
   });
   
   const deleteReplyMutation = useMutation({
-    mutationFn: (replyId: number) => deleteReply(replyId, currentUser.id!),
+    mutationFn: (replyId: number) => deleteReply(replyId, currentUserId),
     onSuccess: (_, replyId) => {
       if (comment) {
         deleteReplyInStore(replyId, comment.id);
@@ -197,7 +199,7 @@ const CommentDialog: React.FC<CommentDialogProps> = ({ comment, onClose }) => {
   
   if (!comment) return null;
   
-  const isCommentAuthor = currentUser.id === comment.user_id;
+  const isCommentAuthor = currentUserId === comment.user_id;
   
   return (
     <Dialog open={!!comment} onClose={onClose} maxWidth="sm" fullWidth>
@@ -315,7 +317,7 @@ const CommentDialog: React.FC<CommentDialogProps> = ({ comment, onClose }) => {
                   <Box display="flex" justifyContent="space-between" alignItems="center">
                     <Typography variant="subtitle2">{reply.user_name}</Typography>
                     
-                    {currentUser.id === reply.user_id && editingReplyId !== reply.id && (
+                    {currentUserId === reply.user_id && editingReplyId !== reply.id && (
                       <Box>
                         <IconButton 
                           size="small" 
