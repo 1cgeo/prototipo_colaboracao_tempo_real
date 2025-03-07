@@ -1,4 +1,4 @@
-// services/socket/index.ts
+// Path: services\socket\index.ts
 
 import { Server as SocketIOServer } from 'socket.io';
 import http from 'http';

@@ -1,4 +1,4 @@
-// services/socket/handlers/comment-handler.ts
+// Path: services\socket\handlers\comment-handler.ts
 
 import { Server as SocketIOServer } from 'socket.io';
 import { SocketUser } from '@/types/socket.js';

@@ -1,4 +1,4 @@
-// services/socket/handlers/polygon-handler.ts
+// Path: services\socket\handlers\polygon-handler.ts
 
 import { Server as SocketIOServer } from 'socket.io';
 import { SocketUser } from '@/types/socket.js';

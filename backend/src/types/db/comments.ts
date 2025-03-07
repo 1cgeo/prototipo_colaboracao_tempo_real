@@ -1,4 +1,4 @@
-// types/db/comments.ts
+// Path: types\db\comments.ts
 
 import { Comment, Reply } from '../index.js';
 

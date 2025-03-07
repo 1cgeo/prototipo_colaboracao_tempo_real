@@ -1,4 +1,4 @@
-// types/db/maps.ts
+// Path: types\db\maps.ts
 
 import { Map } from '../index.js';
 

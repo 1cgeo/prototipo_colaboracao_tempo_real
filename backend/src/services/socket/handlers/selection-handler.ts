@@ -1,4 +1,4 @@
-// services/socket/handlers/selection-handler.ts
+// Path: services\socket\handlers\selection-handler.ts
 
 import { Server as SocketIOServer } from 'socket.io';
 import { SocketUser, SelectionState } from '@/types/socket.js';

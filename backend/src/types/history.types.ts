@@ -1,4 +1,4 @@
-// types/history.types.ts
+// Path: types\history.types.ts
 
 import { Feature } from './feature.types.js';
 

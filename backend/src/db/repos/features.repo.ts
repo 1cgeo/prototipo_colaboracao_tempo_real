@@ -1,4 +1,4 @@
-// db/repos/features.repo.ts
+// Path: db\repos\features.repo.ts
 
 import { IDatabase } from 'pg-promise';
 import { Feature, CreateFeatureDTO, UpdateFeatureDTO } from '@/types/feature.types.js';

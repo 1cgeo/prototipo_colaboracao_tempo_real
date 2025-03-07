@@ -1,4 +1,4 @@
-// config/database.init.ts
+// Path: config\database.init.ts
 
 import { db } from './database.js';
 import { FeaturesRepository } from '../db/repos/features.repo.js';

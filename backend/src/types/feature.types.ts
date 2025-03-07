@@ -1,4 +1,4 @@
-// types/feature.types.ts
+// Path: types\feature.types.ts
 
 // Common type for all feature types
 export type FeatureType = 'point' | 'line' | 'polygon' | 'text' | 'image';

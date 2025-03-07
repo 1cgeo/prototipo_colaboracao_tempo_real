@@ -1,4 +1,4 @@
-// types/index.ts
+// Path: types\index.ts
 
 /**
  * Map definition

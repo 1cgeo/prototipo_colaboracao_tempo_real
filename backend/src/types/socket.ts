@@ -1,4 +1,4 @@
-// types/socket.ts
+// Path: types\socket.ts
 
 import { Socket } from 'socket.io';
 

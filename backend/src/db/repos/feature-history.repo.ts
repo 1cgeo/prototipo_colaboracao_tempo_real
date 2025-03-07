@@ -1,4 +1,4 @@
-// db/repos/feature-history.repo.ts
+// Path: db\repos\feature-history.repo.ts
 
 import { IDatabase } from 'pg-promise';
 import { Feature } from '@/types/feature.types.js';

@@ -1,4 +1,4 @@
-// controllers/feature-history.controller.ts
+// Path: controllers\feature-history.controller.ts
 
 import { Request, Response } from 'express';
 import { db } from '../config/database.js';

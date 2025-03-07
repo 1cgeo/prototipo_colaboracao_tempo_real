@@ -1,4 +1,4 @@
-// config/database.ts
+// Path: config\database.ts
 import pgPromise from 'pg-promise';
 import config from './env.js';
 import { IDB } from '../types/db/index.js';

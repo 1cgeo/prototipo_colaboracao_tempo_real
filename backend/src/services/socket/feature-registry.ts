@@ -1,4 +1,4 @@
-// services/socket/feature-registry.ts
+// Path: services\socket\feature-registry.ts
 
 import { Server as SocketIOServer } from 'socket.io';
 import { SocketUser, Rooms } from '@/types/socket.js';

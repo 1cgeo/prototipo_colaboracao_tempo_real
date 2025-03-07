@@ -1,4 +1,4 @@
-// types/db/index.ts
+// Path: types\db\index.ts
 
 import { IDatabase } from 'pg-promise';
 import { IMapExtensions } from './maps.js';

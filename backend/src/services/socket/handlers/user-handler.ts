@@ -1,4 +1,4 @@
-// services/socket/handlers/user-handler.ts
+// Path: services\socket\handlers\user-handler.ts
 
 import { Server as SocketIOServer } from 'socket.io';
 import { SocketUser, Rooms, Position } from '@/types/socket.js';
