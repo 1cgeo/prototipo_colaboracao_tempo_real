@@ -1,8 +1,7 @@
-// Path: config\database.ts
+// config/database.ts
 import pgPromise from 'pg-promise';
 import config from './env.js';
-import { initRepositories } from '../db/repos/index.js';
-import { IDB } from '../types/db.js';
+import { IDB } from '../types/db/index.js';
 
 // Initialize pg-promise with options
 const pgp = pgPromise({
@@ -38,69 +37,4 @@ const db = pgp({
   password: config.database.password,
 }) as IDB;
 
-// Initialize repositories
-initRepositories(db);
-console.log('[DB] Repositories initialized');
-
-// Database initialization function
-export const initDb = async (): Promise<void> => {
-  try {
-    console.log('[DB] Starting database initialization...');
-    
-    // Use a transaction to ensure all tables are created atomically
-    await db.tx('init-db', async t => {
-      console.log('[DB] Creating maps table...');
-      await t.none(`
-        CREATE TABLE IF NOT EXISTS maps (
-          id SERIAL PRIMARY KEY,
-          name VARCHAR(255) NOT NULL,
-          description TEXT,
-          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )
-      `);
-
-      console.log('[DB] Creating comments table...');
-      await t.none(`
-        CREATE TABLE IF NOT EXISTS comments (
-          id SERIAL PRIMARY KEY,
-          map_id INTEGER NOT NULL REFERENCES maps(id) ON DELETE CASCADE,
-          user_id VARCHAR(255) NOT NULL,
-          user_name VARCHAR(255) NOT NULL,
-          content TEXT NOT NULL,
-          lng DOUBLE PRECISION NOT NULL,
-          lat DOUBLE PRECISION NOT NULL,
-          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-          updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )
-      `);
-
-      console.log('[DB] Creating replies table...');
-      await t.none(`
-        CREATE TABLE IF NOT EXISTS replies (
-          id SERIAL PRIMARY KEY,
-          comment_id INTEGER NOT NULL REFERENCES comments(id) ON DELETE CASCADE,
-          user_id VARCHAR(255) NOT NULL,
-          user_name VARCHAR(255) NOT NULL,
-          content TEXT NOT NULL,
-          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-          updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )
-      `);
-
-      console.log('[DB] Creating indexes...');
-      await t.none(`
-        CREATE INDEX IF NOT EXISTS comments_map_id_idx ON comments(map_id);
-        CREATE INDEX IF NOT EXISTS replies_comment_id_idx ON replies(comment_id);
-      `);
-      
-      return null;
-    });
-
-    console.log('[DB] Database initialization completed successfully');
-  } catch (error) {
-    console.error('[DB] Database initialization error:', error);
-    throw error; // Rethrow to allow the application to handle it
-  }
-};
-
-export { db };
+export { db, pgp };

@@ -1,20 +1,9 @@
-// Path: types\db.ts
-import { IDatabase } from 'pg-promise';
-import { Map, Comment, Reply } from './index.js';
+// types/db/comments.ts
 
-// Define a custom interface extending the pg-promise types
-export interface IExtensions {
-  // Maps methods
-  getMaps(): Promise<Map[]>;
-  getMap(id: number): Promise<Map | null>;
-  createMap(name: string, description: string | null): Promise<Map>;
-  updateMap(
-    id: number,
-    name: string,
-    description: string | null,
-  ): Promise<Map | null>;
-  deleteMap(id: number): Promise<boolean>;
+import { Comment, Reply } from '../index.js';
 
+// Comment-related database extensions
+export interface ICommentExtensions {
   // Comments methods
   getMapComments(mapId: number): Promise<Comment[]>;
   getCommentReplies(commentId: number): Promise<Reply[]>;
@@ -34,7 +23,7 @@ export interface IExtensions {
     lat: number,
   ): Promise<Comment | null>;
   deleteComment(id: number): Promise<boolean>;
-
+  
   // Replies methods
   createReply(data: {
     comment_id: number;
@@ -47,6 +36,3 @@ export interface IExtensions {
   deleteReply(id: number): Promise<boolean>;
   getCommentMapId(commentId: number): Promise<number>;
 }
-
-// Export the combined types
-export type IDB = IDatabase<IExtensions> & IExtensions;

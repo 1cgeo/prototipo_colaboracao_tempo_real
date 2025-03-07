@@ -1,4 +1,8 @@
-// Path: types\index.ts
+// types/index.ts
+
+/**
+ * Map definition
+ */
 export interface Map {
   id: number;
   name: string;
@@ -6,23 +10,17 @@ export interface Map {
   created_at: Date;
 }
 
+/**
+ * Position coordinates
+ */
 export interface Position {
   lng: number;
   lat: number;
 }
 
-export interface User {
-  id: string;
-  name: string;
-  position: Position;
-}
-
-export interface Rooms {
-  [roomId: string]: {
-    [userId: string]: User;
-  };
-}
-
+/**
+ * Comment definition
+ */
 export interface Comment {
   id: number;
   map_id: number;
@@ -36,6 +34,9 @@ export interface Comment {
   replies?: Reply[];
 }
 
+/**
+ * Reply definition
+ */
 export interface Reply {
   id: number;
   comment_id: number;
@@ -46,6 +47,9 @@ export interface Reply {
   updated_at: Date;
 }
 
+/**
+ * Data for creating a comment
+ */
 export interface CommentCreateData {
   map_id: number;
   user_id: string;
@@ -55,15 +59,24 @@ export interface CommentCreateData {
   lat: number;
 }
 
+/**
+ * Data for updating a comment
+ */
 export interface CommentUpdateData {
   content: string;
 }
 
+/**
+ * Data for updating a comment position
+ */
 export interface CommentPositionUpdateData {
   lng: number;
   lat: number;
 }
 
+/**
+ * Data for creating a reply
+ */
 export interface ReplyCreateData {
   comment_id: number;
   user_id: string;
@@ -71,6 +84,9 @@ export interface ReplyCreateData {
   content: string;
 }
 
+/**
+ * Data for updating a reply
+ */
 export interface ReplyUpdateData {
   content: string;
 }
