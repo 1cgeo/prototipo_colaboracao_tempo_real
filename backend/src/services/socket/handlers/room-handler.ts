@@ -8,7 +8,7 @@ import { db } from '@/config/database.js';
  * Set up room-related socket handlers
  */
 export function setupRoomHandlers(
-  io: SocketIOServer,
+  _io: SocketIOServer,
   user: SocketUser,
   rooms: Rooms
 ): void {

@@ -1,9 +1,8 @@
 // services/socket/handlers/polygon-handler.ts
 
 import { Server as SocketIOServer } from 'socket.io';
-import { SocketUser, Rooms } from '@/types/socket.js';
+import { SocketUser } from '@/types/socket.js';
 import { db } from '@/config/database.js';
-import { PolygonFeature } from '@/types/feature.types.js';
 
 /**
  * Validate polygon geometry
@@ -51,7 +50,7 @@ function isValidPolygon(coordinates: Array<Array<[number, number]>>): boolean {
 export function setupPolygonHandlers(
   io: SocketIOServer,
   user: SocketUser,
-  rooms: Rooms
+  _rooms: any // Using underscore to mark as intentionally unused parameter
 ): void {
   const { socket } = user;
   
@@ -241,54 +240,6 @@ export function setupPolygonHandlers(
     } catch (error) {
       console.error('[SOCKET] Error updating polygon properties:', error);
       socket.emit('error', 'Failed to update polygon properties');
-    }
-  });
-  
-  // Delete polygon
-  socket.on('delete-polygon', async (featureId: number) => {
-    try {
-      if (!user.currentRoom) {
-        socket.emit('error', 'You must join a map first');
-        return;
-      }
-      
-      console.log(`[SOCKET] User ${user.id} deleting polygon feature ${featureId}`);
-      
-      // Get feature before deletion
-      const feature = await db.getFeature(featureId);
-      
-      if (!feature || feature.feature_type !== 'polygon') {
-        socket.emit('error', 'Polygon feature not found');
-        return;
-      }
-      
-      // Record in history before deleting
-      await db.recordFeatureDeletion(feature, user.id, user.name);
-      
-      // Delete the feature
-      const deleted = await db.deleteFeature(featureId);
-      
-      if (!deleted) {
-        socket.emit('error', 'Failed to delete polygon');
-        return;
-      }
-      
-      console.log(`[SOCKET] Polygon feature ${featureId} deleted successfully`);
-      
-      // Broadcast to room
-      io.to(user.currentRoom).emit('feature-deleted', {
-        featureId,
-        featureType: 'polygon',
-        mapId: feature.map_id,
-        deleter: {
-          id: user.id,
-          name: user.name
-        }
-      });
-      
-    } catch (error) {
-      console.error('[SOCKET] Error deleting polygon:', error);
-      socket.emit('error', 'Failed to delete polygon');
     }
   });
   

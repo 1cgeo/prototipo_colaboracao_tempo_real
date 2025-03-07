@@ -1,9 +1,9 @@
 // services/socket/handlers/comment-handler.ts
 
 import { Server as SocketIOServer } from 'socket.io';
-import { SocketUser, Rooms } from '../../../types/socket.js';
-import { db } from '../../../config/database.js';
-import { CommentCreateData, CommentUpdateData, CommentPositionUpdateData, ReplyCreateData, ReplyUpdateData } from '../../../types/index.js';
+import { SocketUser } from '@/types/socket.js';
+import { db } from '@/config/database.js';
+import { CommentCreateData, ReplyCreateData } from '@/types/index.js';
 
 /**
  * Set up comment socket handlers
@@ -11,7 +11,7 @@ import { CommentCreateData, CommentUpdateData, CommentPositionUpdateData, ReplyC
 export function setupCommentHandlers(
   io: SocketIOServer,
   user: SocketUser,
-  rooms: Rooms
+  _rooms: any // Using underscore to mark as intentionally unused parameter
 ): void {
   const { socket } = user;
   
@@ -215,9 +215,6 @@ export function setupCommentHandlers(
         return;
       }
       
-      // Store the map ID for socket event
-      const mapId = comment.map_id;
-      
       // Delete comment (will cascade to replies)
       const deleted = await db.deleteComment(commentId);
       
@@ -261,9 +258,9 @@ export function setupCommentHandlers(
       };
       
       // Check if parent comment exists and get its map_id
-      const comment = await db.getComment(replyData.comment_id);
+      const parentComment = await db.getComment(replyData.comment_id);
       
-      if (!comment) {
+      if (!parentComment) {
         socket.emit('error', 'Parent comment not found');
         return;
       }
@@ -324,9 +321,6 @@ export function setupCommentHandlers(
       }
       
       console.log(`[SOCKET] Reply ${id} updated successfully`);
-      
-      // Get comment ID and map ID
-      const comment = await db.getComment(reply.comment_id);
       
       // Broadcast to room
       io.to(user.currentRoom).emit('reply-updated', {

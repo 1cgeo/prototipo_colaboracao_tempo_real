@@ -1,8 +1,8 @@
 // services/socket/handlers/feature-handler.ts
 
 import { Server as SocketIOServer } from 'socket.io';
-import { SocketUser, Rooms } from '../../../types/socket.js';
-import { db } from '../../../config/database.js';
+import { SocketUser } from '@/types/socket.js';
+import { db } from '@/config/database.js';
 
 /**
  * Set up generic feature socket handlers
@@ -10,7 +10,7 @@ import { db } from '../../../config/database.js';
 export function setupFeatureHandlers(
   io: SocketIOServer,
   user: SocketUser,
-  rooms: Rooms
+  _rooms: any // Using underscore to mark as intentionally unused parameter
 ): void {
   const { socket } = user;
   
@@ -84,71 +84,26 @@ export function setupFeatureHandlers(
     }
   });
   
-  // Delete feature (generic)
-  socket.on('delete-feature', async (featureId: number) => {
+  // Delete features (works for single or multiple features)
+  socket.on('delete-features', async (featureIds) => {
     try {
       if (!user.currentRoom) {
         socket.emit('error', 'You must join a map first');
         return;
       }
       
-      console.log(`[SOCKET] User ${user.id} deleting feature ${featureId}`);
+      // Ensure featureIds is an array
+      const ids = Array.isArray(featureIds) ? featureIds : [featureIds];
       
-      // Get feature before deletion
-      const feature = await db.getFeature(featureId);
+      console.log(`[SOCKET] User ${user.id} deleting ${ids.length} feature(s): ${ids.join(', ')}`);
       
-      if (!feature) {
-        socket.emit('error', 'Feature not found');
-        return;
-      }
-      
-      // Record in history before deleting
-      await db.recordFeatureDeletion(feature, user.id, user.name);
-      
-      // Delete the feature
-      const deleted = await db.deleteFeature(featureId);
-      
-      if (!deleted) {
-        socket.emit('error', 'Failed to delete feature');
-        return;
-      }
-      
-      console.log(`[SOCKET] Feature ${featureId} deleted successfully`);
-      
-      // Broadcast to room
-      io.to(user.currentRoom).emit('feature-deleted', {
-        featureId,
-        featureType: feature.feature_type,
-        mapId: feature.map_id,
-        deleter: {
-          id: user.id,
-          name: user.name
-        }
-      });
-      
-    } catch (error) {
-      console.error('[SOCKET] Error deleting feature:', error);
-      socket.emit('error', 'Failed to delete feature');
-    }
-  });
-  
-  // Bulk delete features
-  socket.on('delete-features', async (featureIds: number[]) => {
-    try {
-      if (!user.currentRoom) {
-        socket.emit('error', 'You must join a map first');
-        return;
-      }
-      
-      console.log(`[SOCKET] User ${user.id} bulk deleting ${featureIds.length} features`);
-      
-      if (featureIds.length === 0) {
+      if (ids.length === 0) {
         return;
       }
       
       // Get all features before deletion for history
       const features = await Promise.all(
-        featureIds.map(id => db.getFeature(id))
+        ids.map(id => db.getFeature(id))
       );
       
       const validFeatures = features.filter(f => f !== null);
@@ -168,21 +123,34 @@ export function setupFeatureHandlers(
         validFeatures.map(f => f.id)
       );
       
-      console.log(`[SOCKET] Successfully deleted ${deleteCount} features`);
+      console.log(`[SOCKET] Successfully deleted ${deleteCount} feature(s)`);
       
-      // Broadcast to room
-      io.to(user.currentRoom).emit('features-deleted', {
-        featureIds: validFeatures.map(f => f.id),
-        mapId: validFeatures[0].map_id,
-        deleteCount,
-        deleter: {
-          id: user.id,
-          name: user.name
-        }
-      });
+      // If only one feature was deleted, send feature-deleted event
+      if (deleteCount === 1 && validFeatures.length === 1) {
+        io.to(user.currentRoom).emit('feature-deleted', {
+          featureId: validFeatures[0].id,
+          featureType: validFeatures[0].feature_type,
+          mapId: validFeatures[0].map_id,
+          deleter: {
+            id: user.id,
+            name: user.name
+          }
+        });
+      } else {
+        // Otherwise, send features-deleted event
+        io.to(user.currentRoom).emit('features-deleted', {
+          featureIds: validFeatures.map(f => f.id),
+          mapId: validFeatures[0].map_id,
+          deleteCount,
+          deleter: {
+            id: user.id,
+            name: user.name
+          }
+        });
+      }
       
     } catch (error) {
-      console.error('[SOCKET] Error bulk deleting features:', error);
+      console.error('[SOCKET] Error deleting features:', error);
       socket.emit('error', 'Failed to delete features');
     }
   });
@@ -231,6 +199,133 @@ export function setupFeatureHandlers(
     } catch (error) {
       console.error('[SOCKET] Error getting map history:', error);
       socket.emit('error', 'Failed to load map history');
+    }
+  });
+  
+  // Revert feature to previous state
+  socket.on('revert-feature', async (data) => {
+    try {
+      if (!user.currentRoom) {
+        socket.emit('error', 'You must join a map first');
+        return;
+      }
+      
+      const { featureId, historyId } = data;
+      console.log(`[SOCKET] User ${user.id} reverting feature ${featureId} to history state ${historyId}`);
+      
+      // Get the history entry
+      const historyEntries = await db.getFeatureHistory(featureId);
+      const historyEntry = historyEntries.find(entry => entry.id === historyId);
+      
+      if (!historyEntry) {
+        socket.emit('error', 'History entry not found');
+        return;
+      }
+      
+      // Get the current feature
+      const currentFeature = await db.getFeature(featureId);
+      
+      if (!currentFeature) {
+        socket.emit('error', 'Feature not found');
+        return;
+      }
+      
+      // Determine the state to revert to
+      let revertState;
+      
+      if (historyEntry.operation === 'create') {
+        // Revert to the initial state
+        revertState = historyEntry.new_state;
+      } else if (historyEntry.operation === 'update') {
+        // Revert to the state before the update
+        revertState = historyEntry.previous_state;
+      } else if (historyEntry.operation === 'delete') {
+        // Revert to the state before deletion
+        revertState = historyEntry.previous_state;
+      } else {
+        socket.emit('error', 'Cannot revert to this history state');
+        return;
+      }
+      
+      if (!revertState) {
+        socket.emit('error', 'No valid state to revert to');
+        return;
+      }
+      
+      // Check if the feature was deleted (not present) and needs to be recreated
+      if (!currentFeature && revertState) {
+        // Need to recreate the feature from history
+        const newFeature = await db.createFeature({
+          map_id: revertState.map_id,
+          feature_type: revertState.feature_type,
+          geometry: revertState.geometry,
+          properties: revertState.properties,
+          user_id: user.id,
+          user_name: user.name
+        });
+        
+        // Record the recreation in history
+        await db.recordFeatureCreation(newFeature, user.id, user.name);
+        
+        console.log(`[SOCKET] Feature ${featureId} was recreated from history state ${historyId}`);
+        
+        // Broadcast the recreation
+        io.to(user.currentRoom).emit('feature-created', {
+          feature: newFeature,
+          creator: {
+            id: user.id,
+            name: user.name
+          },
+          revertedFrom: historyId
+        });
+        
+      } else {
+        // Feature exists, update it to the previous state
+        const updateResult = await db.updateFeature(
+          featureId,
+          {
+            geometry: revertState.geometry,
+            properties: revertState.properties,
+            version: currentFeature.version
+          },
+          user.id,
+          user.name
+        );
+        
+        if (!updateResult.success) {
+          if (updateResult.currentVersion) {
+            socket.emit('feature-update-conflict', {
+              featureId,
+              currentVersion: updateResult.currentVersion
+            });
+          } else {
+            socket.emit('error', 'Failed to revert feature');
+          }
+          return;
+        }
+        
+        console.log(`[SOCKET] Feature ${featureId} reverted to history state ${historyId}`);
+        
+        // Broadcast the update
+        io.to(user.currentRoom).emit('feature-updated', {
+          feature: updateResult.feature,
+          updater: {
+            id: user.id,
+            name: user.name
+          },
+          revertedFrom: historyId
+        });
+      }
+      
+      // Send confirmation to the client
+      socket.emit('feature-reverted', {
+        featureId,
+        historyId
+      });
+      
+    } catch (error) {
+      console.error('[SOCKET] Error reverting feature:', error);
+      socket.emit('error', 'Failed to revert feature');
     }
   });
 }

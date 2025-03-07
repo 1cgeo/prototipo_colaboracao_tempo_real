@@ -1,7 +1,7 @@
 // services/socket/feature-registry.ts
 
 import { Server as SocketIOServer } from 'socket.io';
-import { SocketUser, Rooms } from '../../types/socket.js';
+import { SocketUser, Rooms } from '@/types/socket.js';
 
 /**
  * Type for feature handler registration function
@@ -41,22 +41,3 @@ export function setupAllFeatureHandlers(
     setupFn(io, user, rooms);
   }
 }
-
-/**
- * This provides an easy way to register new feature types.
- * When adding a new feature type:
- * 
- * 1. Create a new handler file: services/socket/handlers/{feature-type}-handler.ts
- * 2. Implement the handler using the FeatureHandlerSetup signature
- * 3. Register it at application startup:
- *
- * ```
- * import { registerFeatureHandler } from './services/socket/feature-registry.js';
- * import { setupNewFeatureHandlers } from './services/socket/handlers/new-feature-handler.js';
- * 
- * registerFeatureHandler('new-feature', setupNewFeatureHandlers);
- * ```
- * 
- * This allows the application to be extended with new feature types
- * without modifying the core socket setup.
- */

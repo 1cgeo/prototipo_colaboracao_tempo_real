@@ -1,7 +1,7 @@
 // services/socket/handlers/selection-handler.ts
 
 import { Server as SocketIOServer } from 'socket.io';
-import { SocketUser, Rooms, SelectionState } from '@/types/socket.js';
+import { SocketUser, SelectionState } from '@/types/socket.js';
 
 // Track selections across all maps
 const selections: Record<string, SelectionState> = {};
@@ -12,7 +12,7 @@ const selections: Record<string, SelectionState> = {};
 export function setupSelectionHandlers(
   io: SocketIOServer,
   user: SocketUser,
-  rooms: Rooms
+  _rooms: any
 ): void {
   const { socket } = user;
   

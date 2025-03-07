@@ -7,7 +7,7 @@ import { SocketUser, Rooms, Position } from '@/types/socket.js';
  * Set up user-related socket handlers
  */
 export function setupUserHandlers(
-  io: SocketIOServer,
+  _io: SocketIOServer,
   user: SocketUser,
   rooms: Rooms
 ): void {
@@ -34,33 +34,5 @@ export function setupUserHandlers(
       name: user.name,
       position,
     });
-  });
-  
-  // Handle user name change
-  socket.on('change-name', (newName: string) => {
-    if (!newName || newName.trim().length === 0) {
-      socket.emit('error', 'Invalid name');
-      return;
-    }
-    
-    console.log(`[SOCKET] User ${user.id} changing name from "${user.name}" to "${newName}"`);
-    user.name = newName;
-    
-    // Update name in all rooms
-    if (user.currentRoom && rooms[user.currentRoom] && rooms[user.currentRoom][user.id]) {
-      rooms[user.currentRoom][user.id].name = newName;
-      
-      // Notify room of name change
-      socket.to(user.currentRoom).emit('user-renamed', {
-        id: user.id,
-        name: newName
-      });
-      
-      // Confirm name change to user
-      socket.emit('name-changed', {
-        id: user.id,
-        name: newName
-      });
-    }
   });
 }
