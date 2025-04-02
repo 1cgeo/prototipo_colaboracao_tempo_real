@@ -1,11 +1,12 @@
 // Path: types\feature.types.ts
 
-// Common type for all feature types
-export type FeatureType = 'point' | 'line' | 'polygon' | 'text' | 'image';
+// Common type for all feature types - only export Feature and the DTOs as they're the ones used externally
+// Internal types are kept but not exported
+type FeatureType = 'point' | 'line' | 'polygon' | 'text' | 'image';
 
 // Base feature interface
-export interface BaseFeature {
-  id: number;
+interface BaseFeature {
+  id: string; // UUID
   map_id: number;
   feature_type: FeatureType;
   geometry: any; // GeoJSON geometry
@@ -15,10 +16,12 @@ export interface BaseFeature {
   created_at: Date;
   updated_at: Date;
   version: number;
+  client_id?: string;
+  offline_created?: boolean;
 }
 
 // Point Feature
-export interface PointFeature extends BaseFeature {
+interface PointFeature extends BaseFeature {
   feature_type: 'point';
   geometry: {
     type: 'Point';
@@ -32,7 +35,7 @@ export interface PointFeature extends BaseFeature {
 }
 
 // Line Feature
-export interface LineFeature extends BaseFeature {
+interface LineFeature extends BaseFeature {
   feature_type: 'line';
   geometry: {
     type: 'LineString';
@@ -47,7 +50,7 @@ export interface LineFeature extends BaseFeature {
 }
 
 // Polygon Feature
-export interface PolygonFeature extends BaseFeature {
+interface PolygonFeature extends BaseFeature {
   feature_type: 'polygon';
   geometry: {
     type: 'Polygon';
@@ -64,7 +67,7 @@ export interface PolygonFeature extends BaseFeature {
 }
 
 // Text Feature
-export interface TextFeature extends BaseFeature {
+interface TextFeature extends BaseFeature {
   feature_type: 'text';
   geometry: {
     type: 'Point';
@@ -81,7 +84,7 @@ export interface TextFeature extends BaseFeature {
 }
 
 // Image Feature
-export interface ImageFeature extends BaseFeature {
+interface ImageFeature extends BaseFeature {
   feature_type: 'image';
   geometry: {
     type: 'Point';
@@ -91,12 +94,11 @@ export interface ImageFeature extends BaseFeature {
     rotation: number; // in degrees
     size: number; // scale factor
     opacity: number; // 0.0-1.0
-    base64Image: string; // Base64 encoded image data
     imageType: string; // MIME type (e.g., 'image/png', 'image/jpeg')
   };
 }
 
-// Union type for all features
+// Only export the union type and DTOs that are actually used externally
 export type Feature = PointFeature | LineFeature | PolygonFeature | TextFeature | ImageFeature;
 
 // DTOs for creating features
@@ -107,22 +109,8 @@ export interface CreateFeatureDTO {
   properties: Record<string, any>;
   user_id: string;
   user_name: string;
-}
-
-// Specifically for polygon features
-export interface CreatePolygonFeatureDTO {
-  map_id: number;
-  coordinates: Array<Array<[number, number]>>; // Array of rings
-  properties: {
-    fillColor: string;
-    borderColor: string;
-    borderSize: number;
-    borderOpacity: number;
-    fillOpacity: number;
-    showArea: boolean;
-  };
-  user_id: string;
-  user_name: string;
+  client_id?: string;
+  offline_created?: boolean;
 }
 
 // DTO for updating features
@@ -130,11 +118,4 @@ export interface UpdateFeatureDTO {
   geometry?: any;
   properties?: Record<string, any>;
   version: number; // Required for conflict resolution
-}
-
-// For feature selection
-export interface FeatureSelection {
-  featureIds: number[];
-  userId: string;
-  userName: string;
 }

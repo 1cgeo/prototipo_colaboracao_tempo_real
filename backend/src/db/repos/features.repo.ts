@@ -15,7 +15,8 @@ export class FeaturesRepository {
     return this.db.any(
       `SELECT id, map_id, feature_type, 
        ST_AsGeoJSON(geometry)::json as geometry, 
-       properties, user_id, user_name, created_at, updated_at, version
+       properties, user_id, user_name, created_at, updated_at, version,
+       client_id, offline_created
        FROM features 
        WHERE map_id = $1
        ORDER BY created_at ASC`,
@@ -28,7 +29,8 @@ export class FeaturesRepository {
     return this.db.any(
       `SELECT id, map_id, feature_type, 
        ST_AsGeoJSON(geometry)::json as geometry, 
-       properties, user_id, user_name, created_at, updated_at, version
+       properties, user_id, user_name, created_at, updated_at, version,
+       client_id, offline_created
        FROM features 
        WHERE map_id = $1 AND feature_type = $2
        ORDER BY created_at ASC`,
@@ -37,14 +39,28 @@ export class FeaturesRepository {
   }
 
   // Get specific feature - Always include map_id in the query for partition readiness
-  async getFeature(id: number): Promise<Feature | null> {
+  async getFeature(id: string): Promise<Feature | null> {
     return this.db.oneOrNone(
       `SELECT id, map_id, feature_type, 
        ST_AsGeoJSON(geometry)::json as geometry, 
-       properties, user_id, user_name, created_at, updated_at, version
+       properties, user_id, user_name, created_at, updated_at, version,
+       client_id, offline_created
        FROM features 
        WHERE id = $1`,
       id
+    );
+  }
+
+  // Get feature by client_id (for offline reconciliation)
+  async getFeatureByClientId(clientId: string, mapId: number): Promise<Feature | null> {
+    return this.db.oneOrNone(
+      `SELECT id, map_id, feature_type, 
+       ST_AsGeoJSON(geometry)::json as geometry, 
+       properties, user_id, user_name, created_at, updated_at, version,
+       client_id, offline_created
+       FROM features 
+       WHERE client_id = $1 AND map_id = $2`,
+      [clientId, mapId]
     );
   }
 
@@ -53,25 +69,28 @@ export class FeaturesRepository {
     // Always include map_id to make it partition-ready
     return this.db.one(
       `INSERT INTO features 
-       (map_id, feature_type, geometry, properties, user_id, user_name)
-       VALUES ($1, $2, ST_GeomFromGeoJSON($3), $4, $5, $6)
+       (map_id, feature_type, geometry, properties, user_id, user_name, client_id, offline_created)
+       VALUES ($1, $2, ST_GeomFromGeoJSON($3), $4, $5, $6, $7, $8)
        RETURNING id, map_id, feature_type, 
        ST_AsGeoJSON(geometry)::json as geometry,
-       properties, user_id, user_name, created_at, updated_at, version`,
+       properties, user_id, user_name, created_at, updated_at, version,
+       client_id, offline_created`,
       [
         data.map_id,
         data.feature_type,
         JSON.stringify(data.geometry),
         data.properties,
         data.user_id,
-        data.user_name
+        data.user_name,
+        data.client_id || null,
+        data.offline_created || false
       ]
     );
   }
 
   // Update feature with version check for optimistic concurrency
   async updateFeature(
-    id: number, 
+    id: string, 
     data: UpdateFeatureDTO, 
     userId: string,
     userName: string
@@ -81,7 +100,7 @@ export class FeaturesRepository {
       // First get current feature and check version
       const currentFeature = await t.oneOrNone(
         `SELECT id, map_id, version, feature_type, ST_AsGeoJSON(geometry)::json as geometry,
-         properties, user_id, user_name, created_at, updated_at 
+         properties, user_id, user_name, created_at, updated_at, client_id, offline_created
          FROM features
          WHERE id = $1
          FOR UPDATE`,
@@ -146,7 +165,8 @@ export class FeaturesRepository {
          WHERE id = $${paramCounter}
          RETURNING id, map_id, feature_type, 
          ST_AsGeoJSON(geometry)::json as geometry,
-         properties, user_id, user_name, created_at, updated_at, version`,
+         properties, user_id, user_name, created_at, updated_at, version,
+         client_id, offline_created`,
         values
       );
 
@@ -156,7 +176,7 @@ export class FeaturesRepository {
   }
 
   // Delete feature
-  async deleteFeature(id: number): Promise<boolean> {
+  async deleteFeature(id: string): Promise<boolean> {
     const result = await this.db.result(
       'DELETE FROM features WHERE id = $1',
       id
@@ -165,7 +185,7 @@ export class FeaturesRepository {
   }
 
   // Bulk delete features
-  async bulkDeleteFeatures(ids: number[]): Promise<number> {
+  async bulkDeleteFeatures(ids: string[]): Promise<number> {
     if (!ids.length) return 0;
     
     const result = await this.db.result(
@@ -187,7 +207,8 @@ export class FeaturesRepository {
     return this.db.any(
       `SELECT id, map_id, feature_type, 
        ST_AsGeoJSON(geometry)::json as geometry, 
-       properties, user_id, user_name, created_at, updated_at, version
+       properties, user_id, user_name, created_at, updated_at, version,
+       client_id, offline_created
        FROM features 
        WHERE map_id = $1 AND 
        ST_Intersects(
@@ -197,5 +218,83 @@ export class FeaturesRepository {
        ORDER BY created_at ASC`,
       [mapId, minLng, minLat, maxLng, maxLat]
     );
+  }
+
+  // Get features updated since a timestamp
+  async getUpdatedFeatures(
+    mapId: number,
+    since: number,
+    page: number = 1,
+    limit: number = 100
+  ): Promise<Feature[]> {
+    const offset = (page - 1) * limit;
+    
+    return this.db.any(
+      `SELECT id, map_id, feature_type, 
+       ST_AsGeoJSON(geometry)::json as geometry, 
+       properties, user_id, user_name, created_at, updated_at, version,
+       client_id, offline_created
+       FROM features 
+       WHERE map_id = $1 AND updated_at > to_timestamp($2/1000.0)
+       ORDER BY updated_at ASC
+       LIMIT $3 OFFSET $4`,
+      [mapId, since, limit, offset]
+    );
+  }
+
+  // Get features in viewport updated since timestamp with pagination
+  async getFeaturesInViewportSince(
+    mapId: number,
+    minLng: number,
+    minLat: number,
+    maxLng: number,
+    maxLat: number,
+    since: number,
+    page: number = 1,
+    limit: number = 100
+  ): Promise<Feature[]> {
+    const offset = (page - 1) * limit;
+    
+    return this.db.any(
+      `SELECT id, map_id, feature_type, 
+       ST_AsGeoJSON(geometry)::json as geometry, 
+       properties, user_id, user_name, created_at, updated_at, version,
+       client_id, offline_created
+       FROM features 
+       WHERE map_id = $1 
+       AND updated_at > to_timestamp($2/1000.0)
+       AND ST_Intersects(
+         geometry, 
+         ST_MakeEnvelope($3, $4, $5, $6, 4326)
+       )
+       ORDER BY updated_at ASC
+       LIMIT $7 OFFSET $8`,
+      [mapId, since, minLng, minLat, maxLng, maxLat, limit, offset]
+    );
+  }
+
+  // Count updated features for pagination
+  async getUpdatedFeaturesCount(
+    mapId: number,
+    since: number
+  ): Promise<number> {
+    const result = await this.db.one(
+      `SELECT COUNT(*) as count
+       FROM features 
+       WHERE map_id = $1 AND updated_at > to_timestamp($2/1000.0)`,
+      [mapId, since]
+    );
+    return parseInt(result.count);
+  }
+
+  // Check if a feature was deleted
+  async isFeatureDeleted(featureId: string): Promise<boolean> {
+    const result = await this.db.oneOrNone(
+      `SELECT 1 FROM feature_history
+       WHERE feature_id = $1 AND operation = 'delete'
+       LIMIT 1`,
+      featureId
+    );
+    return result !== null;
   }
 }

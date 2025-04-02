@@ -37,4 +37,4 @@ const db = pgp({
   password: config.database.password,
 }) as IDB;
 
-export { db, pgp };
+export { db };

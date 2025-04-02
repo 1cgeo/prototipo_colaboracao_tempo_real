@@ -11,7 +11,8 @@ export const getFeatureHistory = async (
   res: Response
 ): Promise<void> => {
   try {
-    const featureId = parseInt(req.params.id, 10);
+    // Use the ID as a string directly (for UUID support)
+    const featureId = req.params.id;
     console.log(`[API] Fetching history for feature ${featureId}`);
     
     const history = await db.getFeatureHistory(featureId);

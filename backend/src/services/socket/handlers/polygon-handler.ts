@@ -3,33 +3,38 @@
 import { Server as SocketIOServer } from 'socket.io';
 import { SocketUser } from '@/types/socket.js';
 import { db } from '@/config/database.js';
+import { CreateFeatureDTO } from '@/types/feature.types.js';
+import { compressFeature } from '../../../utils/geometryCompression.js';
 
 /**
  * Validate polygon geometry
+ * Ensures polygon coordinates are in proper format and bounds
  */
-function isValidPolygon(coordinates: Array<Array<[number, number]>>): boolean {
+function isValidPolygon(coordinates: Array<Array<[number, number]>>): { valid: boolean; message?: string } {
   if (!Array.isArray(coordinates) || coordinates.length === 0) {
-    return false;
+    return { valid: false, message: "Coordinates must be a non-empty array" };
   }
   
   // Check each ring
   for (const ring of coordinates) {
     if (!Array.isArray(ring) || ring.length < 4) {
-      // A valid polygon ring must have at least 4 points (to close the ring)
-      return false;
+      return { valid: false, message: "Each polygon ring must have at least 4 points" };
     }
     
     // Check each coordinate
     for (const coord of ring) {
       if (!Array.isArray(coord) || coord.length !== 2 || 
           typeof coord[0] !== 'number' || typeof coord[1] !== 'number') {
-        return false;
+        return { valid: false, message: "Each coordinate must be a [longitude, latitude] array of numbers" };
       }
       
       // Validate longitude/latitude ranges
       const [lng, lat] = coord;
-      if (lng < -180 || lng > 180 || lat < -90 || lat > 90) {
-        return false;
+      if (lng < -180 || lng > 180) {
+        return { valid: false, message: `Invalid longitude: ${lng} (must be between -180 and 180)` };
+      }
+      if (lat < -90 || lat > 90) {
+        return { valid: false, message: `Invalid latitude: ${lat} (must be between -90 and 90)` };
       }
     }
     
@@ -37,11 +42,78 @@ function isValidPolygon(coordinates: Array<Array<[number, number]>>): boolean {
     const first = ring[0];
     const last = ring[ring.length - 1];
     if (first[0] !== last[0] || first[1] !== last[1]) {
-      return false;
+      return { valid: false, message: "Polygon ring must be closed (first point must equal last point)" };
     }
   }
   
-  return true;
+  return { valid: true };
+}
+
+/**
+ * Validate polygon properties
+ */
+function validatePolygonProperties(properties: any): { valid: boolean; message?: string; sanitized?: any } {
+  const validatedProperties: any = {
+    fillColor: '#3388ff',
+    borderColor: '#3388ff',
+    borderSize: 2,
+    borderOpacity: 1,
+    fillOpacity: 0.2,
+    showArea: false
+  };
+  
+  if (!properties) {
+    return { valid: true, sanitized: validatedProperties };
+  }
+  
+  // Validate color formats (hex colors)
+  const colorRegex = /^#([A-Fa-f0-9]{6}|[A-Fa-f0-9]{3})$/;
+  
+  if (properties.fillColor !== undefined) {
+    if (typeof properties.fillColor !== 'string' || !colorRegex.test(properties.fillColor)) {
+      return { valid: false, message: "fillColor must be a valid hex color (e.g., #3388ff)" };
+    }
+    validatedProperties.fillColor = properties.fillColor;
+  }
+  
+  if (properties.borderColor !== undefined) {
+    if (typeof properties.borderColor !== 'string' || !colorRegex.test(properties.borderColor)) {
+      return { valid: false, message: "borderColor must be a valid hex color (e.g., #3388ff)" };
+    }
+    validatedProperties.borderColor = properties.borderColor;
+  }
+  
+  // Validate numeric properties
+  if (properties.borderSize !== undefined) {
+    const size = Number(properties.borderSize);
+    if (isNaN(size) || size < 0 || size > 10) {
+      return { valid: false, message: "borderSize must be a number between 0 and 10" };
+    }
+    validatedProperties.borderSize = size;
+  }
+  
+  if (properties.borderOpacity !== undefined) {
+    const opacity = Number(properties.borderOpacity);
+    if (isNaN(opacity) || opacity < 0 || opacity > 1) {
+      return { valid: false, message: "borderOpacity must be a number between 0 and 1" };
+    }
+    validatedProperties.borderOpacity = opacity;
+  }
+  
+  if (properties.fillOpacity !== undefined) {
+    const opacity = Number(properties.fillOpacity);
+    if (isNaN(opacity) || opacity < 0 || opacity > 1) {
+      return { valid: false, message: "fillOpacity must be a number between 0 and 1" };
+    }
+    validatedProperties.fillOpacity = opacity;
+  }
+  
+  // Validate boolean properties
+  if (properties.showArea !== undefined) {
+    validatedProperties.showArea = Boolean(properties.showArea);
+  }
+  
+  return { valid: true, sanitized: validatedProperties };
 }
 
 /**
@@ -50,7 +122,7 @@ function isValidPolygon(coordinates: Array<Array<[number, number]>>): boolean {
 export function setupPolygonHandlers(
   io: SocketIOServer,
   user: SocketUser,
-  _rooms: any // Using underscore to mark as intentionally unused parameter
+  _rooms: any
 ): void {
   const { socket } = user;
   
@@ -66,42 +138,47 @@ export function setupPolygonHandlers(
       console.log(`[SOCKET] User ${user.id} creating new polygon on map ${mapId}`);
       
       // Validate coordinates
-      if (!data.coordinates || !isValidPolygon(data.coordinates)) {
-        socket.emit('error', 'Invalid polygon coordinates');
+      const coordValidation = isValidPolygon(data.coordinates);
+      if (!coordValidation.valid) {
+        socket.emit('error', coordValidation.message || 'Invalid polygon coordinates');
         return;
       }
       
-      // Create polygon feature
-      const polygonFeature = {
+      // Validate properties
+      const propsValidation = validatePolygonProperties(data.properties);
+      if (!propsValidation.valid) {
+        socket.emit('error', propsValidation.message || 'Invalid polygon properties');
+        return;
+      }
+      
+      // Create polygon feature with validated/sanitized properties
+      // Convert from polygon-specific DTO to the generic CreateFeatureDTO
+      const featureData: CreateFeatureDTO = {
         map_id: mapId,
-        feature_type: 'polygon' as const,
+        feature_type: 'polygon',
         geometry: {
           type: 'Polygon',
           coordinates: data.coordinates
         },
-        properties: {
-          fillColor: data.properties?.fillColor || '#3388ff',
-          borderColor: data.properties?.borderColor || '#3388ff',
-          borderSize: data.properties?.borderSize || 2,
-          borderOpacity: data.properties?.borderOpacity || 1,
-          fillOpacity: data.properties?.fillOpacity || 0.2,
-          showArea: data.properties?.showArea || false
-        },
+        properties: propsValidation.sanitized,
         user_id: user.id,
         user_name: user.name
       };
       
       // Save to database
-      const newFeature = await db.createFeature(polygonFeature);
+      const newFeature = await db.createFeature(featureData);
       
       // Record in history
       await db.recordFeatureCreation(newFeature, user.id, user.name);
       
       console.log(`[SOCKET] Polygon feature created with ID ${newFeature.id}`);
       
+      // Apply geometry compression before sending
+      const compressedFeature = compressFeature(newFeature);
+      
       // Broadcast to all clients in the room
       io.to(user.currentRoom).emit('feature-created', {
-        feature: newFeature,
+        feature: compressedFeature,
         creator: {
           id: user.id,
           name: user.name
@@ -125,15 +202,22 @@ export function setupPolygonHandlers(
       const { featureId, coordinates, version } = data;
       console.log(`[SOCKET] User ${user.id} updating polygon geometry for feature ${featureId}`);
       
+      // Validate feature ID
+      if (!featureId || typeof featureId !== 'string' || featureId.trim() === '') {
+        socket.emit('error', 'Invalid feature ID');
+        return;
+      }
+      
       // Validate version
-      if (version === undefined) {
-        socket.emit('error', 'Version is required for updates');
+      if (version === undefined || typeof version !== 'number' || version < 0) {
+        socket.emit('error', 'Version is required and must be a non-negative number');
         return;
       }
       
       // Validate coordinates
-      if (!coordinates || !isValidPolygon(coordinates)) {
-        socket.emit('error', 'Invalid polygon coordinates');
+      const coordValidation = isValidPolygon(coordinates);
+      if (!coordValidation.valid) {
+        socket.emit('error', coordValidation.message || 'Invalid polygon coordinates');
         return;
       }
       
@@ -165,14 +249,20 @@ export function setupPolygonHandlers(
       
       console.log(`[SOCKET] Polygon geometry updated successfully for feature ${featureId}`);
       
-      // Broadcast to room
-      io.to(user.currentRoom).emit('feature-updated', {
-        feature: updateResult.feature,
-        updater: {
-          id: user.id,
-          name: user.name
-        }
-      });
+      // Apply geometry compression
+      const feature = updateResult.feature;
+      if (feature) {
+        const compressedFeature = compressFeature(feature);
+        
+        // Broadcast to room
+        io.to(user.currentRoom).emit('feature-updated', {
+          feature: compressedFeature,
+          updater: {
+            id: user.id,
+            name: user.name
+          }
+        });
+      }
       
     } catch (error) {
       console.error('[SOCKET] Error updating polygon geometry:', error);
@@ -191,15 +281,22 @@ export function setupPolygonHandlers(
       const { featureId, properties, version } = data;
       console.log(`[SOCKET] User ${user.id} updating polygon properties for feature ${featureId}`);
       
+      // Validate feature ID
+      if (!featureId || typeof featureId !== 'string' || featureId.trim() === '') {
+        socket.emit('error', 'Invalid feature ID');
+        return;
+      }
+      
       // Validate version
-      if (version === undefined) {
-        socket.emit('error', 'Version is required for updates');
+      if (version === undefined || typeof version !== 'number' || version < 0) {
+        socket.emit('error', 'Version is required and must be a non-negative number');
         return;
       }
       
       // Validate properties
-      if (!properties) {
-        socket.emit('error', 'Properties are required');
+      const propsValidation = validatePolygonProperties(properties);
+      if (!propsValidation.valid) {
+        socket.emit('error', propsValidation.message || 'Invalid polygon properties');
         return;
       }
       
@@ -207,7 +304,7 @@ export function setupPolygonHandlers(
       const updateResult = await db.updateFeature(
         featureId,
         {
-          properties: properties,
+          properties: propsValidation.sanitized,
           version: version
         },
         user.id,
@@ -228,14 +325,20 @@ export function setupPolygonHandlers(
       
       console.log(`[SOCKET] Polygon properties updated successfully for feature ${featureId}`);
       
-      // Broadcast to room
-      io.to(user.currentRoom).emit('feature-updated', {
-        feature: updateResult.feature,
-        updater: {
-          id: user.id,
-          name: user.name
-        }
-      });
+      // Apply geometry compression
+      const feature = updateResult.feature;
+      if (feature) {
+        const compressedFeature = compressFeature(feature);
+        
+        // Broadcast to room
+        io.to(user.currentRoom).emit('feature-updated', {
+          feature: compressedFeature,
+          updater: {
+            id: user.id,
+            name: user.name
+          }
+        });
+      }
       
     } catch (error) {
       console.error('[SOCKET] Error updating polygon properties:', error);
@@ -246,6 +349,23 @@ export function setupPolygonHandlers(
   // Drag polygon
   socket.on('drag-polygon', (dragInfo) => {
     if (!user.currentRoom) {
+      return;
+    }
+    
+    // Validate drag info
+    if (!dragInfo || typeof dragInfo !== 'object') {
+      socket.emit('error', 'Invalid drag information');
+      return;
+    }
+    
+    if (!dragInfo.featureId || typeof dragInfo.featureId !== 'string') {
+      socket.emit('error', 'Invalid feature ID');
+      return;
+    }
+    
+    if (!dragInfo.offset || typeof dragInfo.offset !== 'object' ||
+        typeof dragInfo.offset.lng !== 'number' || typeof dragInfo.offset.lat !== 'number') {
+      socket.emit('error', 'Invalid offset coordinates');
       return;
     }
     
@@ -271,15 +391,22 @@ export function setupPolygonHandlers(
       const { featureId, newCoordinates, version } = data;
       console.log(`[SOCKET] User ${user.id} ending polygon drag for feature ${featureId}`);
       
+      // Validate feature ID
+      if (!featureId || typeof featureId !== 'string' || featureId.trim() === '') {
+        socket.emit('error', 'Invalid feature ID');
+        return;
+      }
+      
       // Validate version
-      if (version === undefined) {
-        socket.emit('error', 'Version is required for updates');
+      if (version === undefined || typeof version !== 'number' || version < 0) {
+        socket.emit('error', 'Version is required and must be a non-negative number');
         return;
       }
       
       // Validate coordinates
-      if (!newCoordinates || !isValidPolygon(newCoordinates)) {
-        socket.emit('error', 'Invalid polygon coordinates');
+      const coordValidation = isValidPolygon(newCoordinates);
+      if (!coordValidation.valid) {
+        socket.emit('error', coordValidation.message || 'Invalid polygon coordinates');
         return;
       }
       
@@ -311,14 +438,20 @@ export function setupPolygonHandlers(
       
       console.log(`[SOCKET] Polygon drag completed for feature ${featureId}`);
       
-      // Broadcast to room
-      io.to(user.currentRoom).emit('feature-updated', {
-        feature: updateResult.feature,
-        updater: {
-          id: user.id,
-          name: user.name
-        }
-      });
+      // Apply geometry compression
+      const feature = updateResult.feature;
+      if (feature) {
+        const compressedFeature = compressFeature(feature);
+        
+        // Broadcast to room
+        io.to(user.currentRoom).emit('feature-updated', {
+          feature: compressedFeature,
+          updater: {
+            id: user.id,
+            name: user.name
+          }
+        });
+      }
       
     } catch (error) {
       console.error('[SOCKET] Error completing polygon drag:', error);

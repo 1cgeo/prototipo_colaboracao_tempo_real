@@ -2,11 +2,12 @@
 
 import { Feature } from './feature.types.js';
 
-export type OperationType = 'create' | 'update' | 'delete';
+// Only export the FeatureHistory type which is referenced externally
+type OperationType = 'create' | 'update' | 'delete';
 
 export interface FeatureHistory {
   id: number;
-  feature_id: number | null; // null for deleted features
+  feature_id: string | null; // UUID, null for deleted features
   map_id: number;
   operation: OperationType;
   previous_state: Feature | null; // null for create operations
@@ -14,25 +15,5 @@ export interface FeatureHistory {
   user_id: string;
   user_name: string;
   timestamp: Date;
-}
-
-// DTOs for history operations
-export interface CreateHistoryDTO {
-  feature_id: number;
-  map_id: number;
-  operation: OperationType;
-  previous_state: Feature | null;
-  new_state: Feature | null;
-  user_id: string;
-  user_name: string;
-}
-
-export interface GetHistoryOptions {
-  mapId?: number;
-  featureId?: number;
-  userId?: string;
-  limit?: number;
-  offset?: number;
-  startDate?: Date;
-  endDate?: Date;
+  client_operation_id?: string;
 }

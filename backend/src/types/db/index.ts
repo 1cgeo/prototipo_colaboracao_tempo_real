@@ -5,8 +5,8 @@ import { IMapExtensions } from './maps.js';
 import { IFeatureExtensions } from './features.js';
 import { ICommentExtensions } from './comments.js';
 
-// Combine all extensions
-export interface IExtensions extends 
+// Combine all extensions internally - IDB is the only exported type
+interface IExtensions extends 
   IMapExtensions,
   IFeatureExtensions,
   ICommentExtensions

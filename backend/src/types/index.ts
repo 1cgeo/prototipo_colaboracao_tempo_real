@@ -11,18 +11,10 @@ export interface Map {
 }
 
 /**
- * Position coordinates
- */
-export interface Position {
-  lng: number;
-  lat: number;
-}
-
-/**
  * Comment definition
  */
 export interface Comment {
-  id: number;
+  id: string; // UUID
   map_id: number;
   user_id: string;
   user_name: string;
@@ -31,6 +23,8 @@ export interface Comment {
   lat: number;
   created_at: Date;
   updated_at: Date;
+  client_id?: string;
+  offline_created?: boolean;
   replies?: Reply[];
 }
 
@@ -38,13 +32,15 @@ export interface Comment {
  * Reply definition
  */
 export interface Reply {
-  id: number;
-  comment_id: number;
+  id: string; // UUID
+  comment_id: string; // UUID
   user_id: string;
   user_name: string;
   content: string;
   created_at: Date;
   updated_at: Date;
+  client_id?: string;
+  offline_created?: boolean;
 }
 
 /**
@@ -57,36 +53,18 @@ export interface CommentCreateData {
   content: string;
   lng: number;
   lat: number;
-}
-
-/**
- * Data for updating a comment
- */
-export interface CommentUpdateData {
-  content: string;
-}
-
-/**
- * Data for updating a comment position
- */
-export interface CommentPositionUpdateData {
-  lng: number;
-  lat: number;
+  client_id?: string;
+  offline_created?: boolean;
 }
 
 /**
  * Data for creating a reply
  */
 export interface ReplyCreateData {
-  comment_id: number;
+  comment_id: string; // UUID
   user_id: string;
   user_name: string;
   content: string;
-}
-
-/**
- * Data for updating a reply
- */
-export interface ReplyUpdateData {
-  content: string;
+  client_id?: string;
+  offline_created?: boolean;
 }

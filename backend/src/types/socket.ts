@@ -10,13 +10,19 @@ export interface Position {
   lat: number;
 }
 
-/**
- * Room user information
- */
-export interface RoomUser {
+// Internal types - only used within socket handlers
+interface RoomUser {
   id: string;
   name: string;
   position: Position;
+  status?: 'active' | 'away' | 'offline';
+  joinedAt?: number;
+}
+
+interface ConnectionState {
+  isReconnection: boolean;
+  reconnectCount: number;
+  lastSeen: number;
 }
 
 /**
@@ -27,6 +33,7 @@ export interface SocketUser {
   id: string;
   name: string;
   currentRoom: string | null;
+  connectionState?: ConnectionState;
 }
 
 /**
@@ -38,10 +45,8 @@ export interface Rooms {
   };
 }
 
-/**
- * Selection state of a user
- */
-export interface FeatureSelection {
+// Internal types that only need to be used within the socket handlers
+interface FeatureSelection {
   userId: string;
   userName: string;
   featureIds: number[];
@@ -55,14 +60,14 @@ export interface SelectionState {
 }
 
 /**
- * Drag state of features
+ * User connection state tracking 
  */
-export interface DragState {
-  userId: string;
-  userName: string;
-  featureIds: number[];
-  offset: {
-    lng: number;
-    lat: number;
+export interface UserConnectionState {
+  lastSeen: number;
+  lastActivityByMap: {
+    [mapId: number]: number;
   };
+  reconnectCount: number;
+  lastRoom: string | null;
+  userName: string;
 }

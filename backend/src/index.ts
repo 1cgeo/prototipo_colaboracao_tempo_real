@@ -13,7 +13,7 @@ app.use(
     origin: config.cors.origin,
   }),
 );
-app.use(express.json({ limit: '20mb' })); // Increased limit for Base64 images
+app.use(express.json());
 
 // API routes
 app.use('/api', routes);
