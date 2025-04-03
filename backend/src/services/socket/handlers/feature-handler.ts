@@ -6,6 +6,17 @@ import { db } from '@/config/database.js';
 import { Feature } from '@/types/feature.types.js';
 import { compressFeatures, compressFeature } from '../../../utils/geometryCompression.js';
 
+// TTL and size configurations for client cache
+const CLIENT_CACHE_TTL = 30 * 60 * 1000; // 30 minutes
+const CLIENT_CACHE_MAX_SIZE = 5000; // Maximum features per client
+const CACHE_CLEANUP_INTERVAL = 5 * 60 * 1000; // 5 minutes
+
+// Extended cache structure with timestamps
+interface CacheEntry {
+  features: Set<string>;
+  lastAccessed: number;
+}
+
 /**
  * Validate viewport bounds
  */
@@ -56,8 +67,8 @@ export function setupFeatureHandlers(
   const { socket } = user;
   
   // Track the features that have already been sent to this client
-  // to avoid sending duplicates during viewport movements
-  const clientCache = new Map<string, Set<string>>();
+  // with added timestamps for TTL management
+  const clientCache = new Map<string, CacheEntry>();
   
   // Get the cache for the current user/map
   const getCache = (): Set<string> => {
@@ -65,10 +76,53 @@ export function setupFeatureHandlers(
     
     const cacheKey = `${user.id}:${user.currentRoom}`;
     if (!clientCache.has(cacheKey)) {
-      clientCache.set(cacheKey, new Set<string>());
+      clientCache.set(cacheKey, {
+        features: new Set<string>(),
+        lastAccessed: Date.now()
+      });
     }
-    return clientCache.get(cacheKey)!;
+    
+    // Update last accessed timestamp
+    const entry = clientCache.get(cacheKey)!;
+    entry.lastAccessed = Date.now();
+    
+    return entry.features;
   };
+  
+  // Run periodic cleanup of cache to prevent memory leaks
+  const cleanupInterval = setInterval(() => {
+    const now = Date.now();
+    let totalCacheEntries = 0;
+    let entriesRemoved = 0;
+    
+    // Check each cache entry for expiration
+    for (const [key, entry] of clientCache.entries()) {
+      totalCacheEntries += entry.features.size;
+      
+      // Remove entries that haven't been accessed in a while
+      if (now - entry.lastAccessed > CLIENT_CACHE_TTL) {
+        entriesRemoved += entry.features.size;
+        clientCache.delete(key);
+        continue;
+      }
+      
+      // If this entry exceeds max size, trim it
+      if (entry.features.size > CLIENT_CACHE_MAX_SIZE) {
+        // Convert to array, sort by feature ID (not ideal but simple), and keep only the newest
+        const featureIds = Array.from(entry.features);
+        const toRemove = featureIds.slice(0, featureIds.length - CLIENT_CACHE_MAX_SIZE);
+        
+        for (const id of toRemove) {
+          entry.features.delete(id);
+          entriesRemoved++;
+        }
+      }
+    }
+    
+    if (entriesRemoved > 0) {
+      console.log(`[SOCKET] Cache cleanup: removed ${entriesRemoved} entries, current total: ${totalCacheEntries - entriesRemoved}`);
+    }
+  }, CACHE_CLEANUP_INTERVAL);
   
   // Get features for current map - used for initial loading or small maps
   socket.on('get-features', async () => {
@@ -178,6 +232,14 @@ export function setupFeatureHandlers(
       // Filter out features that have already been sent to this client
       const cache = getCache();
       const newFeatures = features.filter(f => !cache.has(f.id));
+      
+      // Check if adding these would exceed the cache limit
+      if (cache.size + newFeatures.length > CLIENT_CACHE_MAX_SIZE) {
+        console.log(`[SOCKET] Cache size would exceed limit (${cache.size} + ${newFeatures.length} > ${CLIENT_CACHE_MAX_SIZE}), clearing oldest entries`);
+        
+        // If we would exceed the limit, clear the cache and only add the new features
+        cache.clear();
+      }
       
       // Update cache with the new features
       newFeatures.forEach(f => cache.add(f.id));
@@ -418,6 +480,11 @@ export function setupFeatureHandlers(
                     featureId: op.data.id
                   };
                   
+                  // Remove from client caches
+                  for (const [_key, entry] of clientCache.entries()) {
+                    entry.features.delete(op.data.id);
+                  }
+                  
                   // Prepare broadcast
                   broadcastEvent = 'feature-deleted';
                   broadcastData = {
@@ -553,12 +620,11 @@ export function setupFeatureHandlers(
       console.log(`[SOCKET] Successfully deleted ${deleteCount} feature(s)`);
       
       // Remove deleted features from client caches
-      const roomId = user.currentRoom;
+      const featureIdsToRemove = validFeatures.map(f => f.id);
       
-      // For all users in this room
-      for (const [cacheKey, cache] of clientCache.entries()) {
-        if (cacheKey.includes(`:${roomId}`)) {
-          validFeatures.forEach(f => cache.delete(f.id));
+      for (const [_key, entry] of clientCache.entries()) {
+        for (const id of featureIdsToRemove) {
+          entry.features.delete(id);
         }
       }
       
@@ -655,12 +721,17 @@ export function setupFeatureHandlers(
   
   // Clean up when user disconnects
   socket.on('disconnect', () => {
+    // Stop the cleanup interval
+    clearInterval(cleanupInterval);
+    
     // Remove all caches for this user
-    for (const cacheKey of clientCache.keys()) {
-      if (cacheKey.startsWith(`${user.id}:`)) {
-        clientCache.delete(cacheKey);
+    for (const [key, _entry] of clientCache.entries()) {
+      if (key.startsWith(`${user.id}:`)) {
+        clientCache.delete(key);
       }
     }
+    
+    console.log(`[SOCKET] Cleaned up feature cache for user ${user.id}`);
   });
 }
 

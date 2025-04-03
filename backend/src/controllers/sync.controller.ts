@@ -5,6 +5,11 @@ import { db } from '../config/database.js';
 import { compressFeatures, compressFeature } from '../utils/geometryCompression.js';
 import { FeatureHistory } from '../types/history.types.js';
 
+// Constants for pagination limits
+const MAX_PAGE_SIZE = 500; // Maximum number of items per page
+const DEFAULT_PAGE_SIZE = 100; // Default page size
+const MAX_TOTAL_ITEMS = 10000; // Maximum total items to fetch
+
 /**
  * Get all updates for a map since a specific timestamp
  * Combines features, comments, and history into a single response
@@ -13,10 +18,19 @@ export const getMapUpdates = async (req: Request, res: Response): Promise<void> 
   try {
     const mapId = parseInt(req.params.mapId, 10);
     
-    // Parse query parameters with defaults
+    // Parse query parameters with defaults and enforce limits
     const since = req.query.since ? parseInt(req.query.since as string, 10) : 0;
-    const page = req.query.page ? parseInt(req.query.page as string, 10) : 1;
-    const limit = req.query.limit ? parseInt(req.query.limit as string, 10) : 100;
+    
+    // Sanitize and limit pagination parameters
+    let page = req.query.page ? parseInt(req.query.page as string, 10) : 1;
+    let limit = req.query.limit ? parseInt(req.query.limit as string, 10) : DEFAULT_PAGE_SIZE;
+    
+    // Enforce positive page number
+    page = Math.max(1, page);
+    
+    // Enforce maximum page size
+    limit = Math.min(Math.max(1, limit), MAX_PAGE_SIZE);
+    
     const includeHistory = req.query.history === 'true';
     
     // Optional viewport filtering
@@ -27,6 +41,23 @@ export const getMapUpdates = async (req: Request, res: Response): Promise<void> 
       } catch (e) {
         console.error("[API] Invalid viewport JSON:", e);
         res.status(400).json({ error: 'Invalid viewport format' });
+        return;
+      }
+    }
+    
+    // Validate viewport parameters if provided
+    if (viewport) {
+      const { minLng, minLat, maxLng, maxLat } = viewport;
+      if (typeof minLng !== 'number' || typeof minLat !== 'number' || 
+          typeof maxLng !== 'number' || typeof maxLat !== 'number') {
+        res.status(400).json({ error: 'Invalid viewport coordinates' });
+        return;
+      }
+      
+      // Validate coordinate ranges
+      if (minLng < -180 || minLng > 180 || maxLng < -180 || maxLng > 180 ||
+          minLat < -90 || minLat > 90 || maxLat < -90 || maxLat > 90) {
+        res.status(400).json({ error: 'Viewport coordinates out of range' });
         return;
       }
     }
@@ -49,14 +80,18 @@ export const getMapUpdates = async (req: Request, res: Response): Promise<void> 
       }
     };
     
+    // Check for excessive total items to prevent DoS attacks
+    const featureCount = await db.getUpdatedFeaturesCount(mapId, since);
+    if (featureCount > MAX_TOTAL_ITEMS) {
+      console.warn(`[API] Excessive data request: ${featureCount} items for map ${mapId}. Consider using more filters or reducing time range.`);
+      
+      // We'll still proceed, but limit the result set
+      response.warnings = [`Large dataset (${featureCount} items) detected. Consider using viewport filtering or narrower time range.`];
+    }
+    
     // Get updated features (with optional viewport filtering)
     if (viewport) {
       const { minLng, minLat, maxLng, maxLat } = viewport;
-      if (typeof minLng !== 'number' || typeof minLat !== 'number' || 
-          typeof maxLng !== 'number' || typeof maxLat !== 'number') {
-        res.status(400).json({ error: 'Invalid viewport coordinates' });
-        return;
-      }
       
       // Get features in viewport updated since timestamp
       response.data.features = await db.getFeaturesInViewportSince(
@@ -88,7 +123,6 @@ export const getMapUpdates = async (req: Request, res: Response): Promise<void> 
     }
     
     // Check for more data (pagination)
-    const featureCount = await db.getUpdatedFeaturesCount(mapId, since);
     const totalPages = Math.ceil(featureCount / limit);
     response.pagination.hasMore = page < totalPages;
     response.pagination.totalPages = totalPages;

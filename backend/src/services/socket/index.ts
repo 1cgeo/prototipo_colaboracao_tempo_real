@@ -13,6 +13,11 @@ import { setupConnectionMonitor } from './quality-monitor.js';
 import { SocketUser, Rooms, UserConnectionState } from '@/types/socket.js';
 import { generateRandomName } from '../../utils/nameGenerator.js';
 
+// Configuration constants for user connections
+const USER_INACTIVE_TIMEOUT = 60 * 60 * 1000; // 1 hour (reduced from 4 hours)
+const USER_CLEANUP_INTERVAL = 5 * 60 * 1000; // 5 minutes (reduced from 30 minutes)
+const MAX_STORED_USERS = 10000; // Maximum number of users to store in memory
+
 // Singleton instance of the Socket.IO server
 let io: SocketIOServer;
 
@@ -66,6 +71,11 @@ export const initializeSocketIO = (server: http.Server): SocketIOServer => {
     
     // Initialize or update user connection state
     if (!userConnections[clientId]) {
+      // If we have too many stored users, clean up the oldest
+      if (Object.keys(userConnections).length >= MAX_STORED_USERS) {
+        cleanupOldestUsers(50); // Remove 50 oldest users to make space
+      }
+      
       userConnections[clientId] = {
         lastSeen: Date.now(),
         lastActivityByMap: {},
@@ -172,29 +182,67 @@ export const initializeSocketIO = (server: http.Server): SocketIOServer => {
     });
   });
   
-  // Set interval to clean up stale connections (users disconnected > 4 hours)
-  // INCREASED to handle long field sessions
+  // Set interval to clean up stale connections (users disconnected > 1 hour)
+  // REDUCED from 4 hours to 1 hour
   setInterval(() => {
-    const now = Date.now();
-    const staleTimeout = 4 * 60 * 60 * 1000; // 4 hours
-    
-    for (const clientId in userConnections) {
-      if (now - userConnections[clientId].lastSeen > staleTimeout) {
-        console.log(`[SOCKET] Cleaning up stale connection for user ${clientId} (inactive for >4 hours)`);
-        
-        // Clean up user from all rooms
-        if (userConnections[clientId].lastRoom && rooms[userConnections[clientId].lastRoom]) {
-          delete rooms[userConnections[clientId].lastRoom][clientId];
-          io.to(userConnections[clientId].lastRoom).emit('user-disconnected', clientId);
-        }
-        
-        delete userConnections[clientId];
-      }
-    }
-  }, 30 * 60 * 1000); // Run every 30 minutes
+    cleanupStaleUsers();
+  }, USER_CLEANUP_INTERVAL);
   
   return io;
 };
+
+/**
+ * Clean up stale user connections
+ */
+function cleanupStaleUsers(): void {
+  const now = Date.now();
+  let cleanupCount = 0;
+  
+  for (const clientId in userConnections) {
+    if (now - userConnections[clientId].lastSeen > USER_INACTIVE_TIMEOUT) {
+      cleanupCount++;
+      
+      // Clean up user from all rooms
+      if (userConnections[clientId].lastRoom && rooms[userConnections[clientId].lastRoom]) {
+        delete rooms[userConnections[clientId].lastRoom][clientId];
+        io.to(userConnections[clientId].lastRoom).emit('user-disconnected', clientId);
+      }
+      
+      delete userConnections[clientId];
+    }
+  }
+  
+  if (cleanupCount > 0) {
+    console.log(`[SOCKET] Cleaned up ${cleanupCount} stale user connection(s)`);
+    console.log(`[SOCKET] Current user connections: ${Object.keys(userConnections).length}`);
+  }
+}
+
+/**
+ * Clean up oldest users when reaching maximum limit
+ */
+function cleanupOldestUsers(count: number): void {
+  // Get userIds sorted by lastSeen (oldest first)
+  const userIds = Object.keys(userConnections).sort(
+    (a, b) => userConnections[a].lastSeen - userConnections[b].lastSeen
+  );
+  
+  // Take only the oldest 'count' users or all if less than count
+  const usersToRemove = userIds.slice(0, Math.min(count, userIds.length));
+  
+  for (const userId of usersToRemove) {
+    // Remove from rooms if present
+    if (userConnections[userId].lastRoom && rooms[userConnections[userId].lastRoom]) {
+      delete rooms[userConnections[userId].lastRoom][userId];
+    }
+    
+    // Delete the user connection state
+    delete userConnections[userId];
+  }
+  
+  console.log(`[SOCKET] Memory management: removed ${usersToRemove.length} oldest user connections`);
+  console.log(`[SOCKET] Current user connections: ${Object.keys(userConnections).length}`);
+}
 
 /**
  * Clean up a user from all rooms

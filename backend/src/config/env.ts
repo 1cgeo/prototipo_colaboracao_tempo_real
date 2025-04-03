@@ -19,6 +19,11 @@ interface Config {
     name: string;
     user: string;
     password: string;
+    pool: {
+      max: number;
+      min: number;
+      idleTimeoutMillis: number;
+    };
   };
   cors: {
     origin: string;
@@ -34,6 +39,11 @@ const config: Config = {
     name: process.env.DB_NAME || 'mapapp',
     user: process.env.DB_USER || 'postgres',
     password: process.env.DB_PASSWORD || 'postgres',
+    pool: {
+      max: parseInt(process.env.DB_POOL_MAX || '30', 10),
+      min: parseInt(process.env.DB_POOL_MIN || '2', 10),
+      idleTimeoutMillis: parseInt(process.env.DB_POOL_IDLE_TIMEOUT || '30000', 10),
+    }
   },
   cors: {
     origin: process.env.CORS_ORIGIN || 'http://localhost:3000',

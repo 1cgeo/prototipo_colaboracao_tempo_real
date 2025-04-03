@@ -3,6 +3,10 @@
 import { IDatabase } from 'pg-promise';
 import { Feature, CreateFeatureDTO, UpdateFeatureDTO } from '@/types/feature.types.js';
 
+// Default precision to use in SQL queries for geometry coordinates
+// 5 decimal places ≈ 1.1 meter precision at the equator
+const DEFAULT_GEOMETRY_PRECISION = 5;
+
 export class FeaturesRepository {
   private db: IDatabase<any>;
 
@@ -14,7 +18,7 @@ export class FeaturesRepository {
   async getMapFeatures(mapId: number): Promise<Feature[]> {
     return this.db.any(
       `SELECT id, map_id, feature_type, 
-       ST_AsGeoJSON(geometry)::json as geometry, 
+       ST_AsGeoJSON(geometry, ${DEFAULT_GEOMETRY_PRECISION})::json as geometry, 
        properties, user_id, user_name, created_at, updated_at, version,
        client_id, offline_created
        FROM features 
@@ -28,7 +32,7 @@ export class FeaturesRepository {
   async getMapFeaturesByType(mapId: number, featureType: string): Promise<Feature[]> {
     return this.db.any(
       `SELECT id, map_id, feature_type, 
-       ST_AsGeoJSON(geometry)::json as geometry, 
+       ST_AsGeoJSON(geometry, ${DEFAULT_GEOMETRY_PRECISION})::json as geometry, 
        properties, user_id, user_name, created_at, updated_at, version,
        client_id, offline_created
        FROM features 
@@ -42,7 +46,7 @@ export class FeaturesRepository {
   async getFeature(id: string): Promise<Feature | null> {
     return this.db.oneOrNone(
       `SELECT id, map_id, feature_type, 
-       ST_AsGeoJSON(geometry)::json as geometry, 
+       ST_AsGeoJSON(geometry, ${DEFAULT_GEOMETRY_PRECISION})::json as geometry, 
        properties, user_id, user_name, created_at, updated_at, version,
        client_id, offline_created
        FROM features 
@@ -55,7 +59,7 @@ export class FeaturesRepository {
   async getFeatureByClientId(clientId: string, mapId: number): Promise<Feature | null> {
     return this.db.oneOrNone(
       `SELECT id, map_id, feature_type, 
-       ST_AsGeoJSON(geometry)::json as geometry, 
+       ST_AsGeoJSON(geometry, ${DEFAULT_GEOMETRY_PRECISION})::json as geometry, 
        properties, user_id, user_name, created_at, updated_at, version,
        client_id, offline_created
        FROM features 
@@ -72,7 +76,7 @@ export class FeaturesRepository {
        (map_id, feature_type, geometry, properties, user_id, user_name, client_id, offline_created)
        VALUES ($1, $2, ST_GeomFromGeoJSON($3), $4, $5, $6, $7, $8)
        RETURNING id, map_id, feature_type, 
-       ST_AsGeoJSON(geometry)::json as geometry,
+       ST_AsGeoJSON(geometry, ${DEFAULT_GEOMETRY_PRECISION})::json as geometry,
        properties, user_id, user_name, created_at, updated_at, version,
        client_id, offline_created`,
       [
@@ -99,7 +103,7 @@ export class FeaturesRepository {
     return this.db.tx('update-feature', async (t) => {
       // First get current feature and check version
       const currentFeature = await t.oneOrNone(
-        `SELECT id, map_id, version, feature_type, ST_AsGeoJSON(geometry)::json as geometry,
+        `SELECT id, map_id, version, feature_type, ST_AsGeoJSON(geometry, ${DEFAULT_GEOMETRY_PRECISION})::json as geometry,
          properties, user_id, user_name, created_at, updated_at, client_id, offline_created
          FROM features
          WHERE id = $1
@@ -164,7 +168,7 @@ export class FeaturesRepository {
          SET ${updates.join(', ')}
          WHERE id = $${paramCounter}
          RETURNING id, map_id, feature_type, 
-         ST_AsGeoJSON(geometry)::json as geometry,
+         ST_AsGeoJSON(geometry, ${DEFAULT_GEOMETRY_PRECISION})::json as geometry,
          properties, user_id, user_name, created_at, updated_at, version,
          client_id, offline_created`,
         values
@@ -206,7 +210,7 @@ export class FeaturesRepository {
   ): Promise<Feature[]> {
     return this.db.any(
       `SELECT id, map_id, feature_type, 
-       ST_AsGeoJSON(geometry)::json as geometry, 
+       ST_AsGeoJSON(geometry, ${DEFAULT_GEOMETRY_PRECISION})::json as geometry, 
        properties, user_id, user_name, created_at, updated_at, version,
        client_id, offline_created
        FROM features 
@@ -220,29 +224,30 @@ export class FeaturesRepository {
     );
   }
 
-  // Get features updated since a timestamp
+  // Get features updated since a timestamp with adaptive precision
   async getUpdatedFeatures(
     mapId: number,
     since: number,
     page: number = 1,
-    limit: number = 100
+    limit: number = 100,
+    precision: number = DEFAULT_GEOMETRY_PRECISION
   ): Promise<Feature[]> {
     const offset = (page - 1) * limit;
     
     return this.db.any(
       `SELECT id, map_id, feature_type, 
-       ST_AsGeoJSON(geometry)::json as geometry, 
+       ST_AsGeoJSON(geometry, $5)::json as geometry, 
        properties, user_id, user_name, created_at, updated_at, version,
        client_id, offline_created
        FROM features 
        WHERE map_id = $1 AND updated_at > to_timestamp($2/1000.0)
        ORDER BY updated_at ASC
        LIMIT $3 OFFSET $4`,
-      [mapId, since, limit, offset]
+      [mapId, since, limit, offset, precision]
     );
   }
 
-  // Get features in viewport updated since timestamp with pagination
+  // Get features in viewport updated since timestamp with pagination and adaptive precision
   async getFeaturesInViewportSince(
     mapId: number,
     minLng: number,
@@ -251,13 +256,14 @@ export class FeaturesRepository {
     maxLat: number,
     since: number,
     page: number = 1,
-    limit: number = 100
+    limit: number = 100,
+    precision: number = DEFAULT_GEOMETRY_PRECISION
   ): Promise<Feature[]> {
     const offset = (page - 1) * limit;
     
     return this.db.any(
       `SELECT id, map_id, feature_type, 
-       ST_AsGeoJSON(geometry)::json as geometry, 
+       ST_AsGeoJSON(geometry, $9)::json as geometry, 
        properties, user_id, user_name, created_at, updated_at, version,
        client_id, offline_created
        FROM features 
@@ -269,7 +275,7 @@ export class FeaturesRepository {
        )
        ORDER BY updated_at ASC
        LIMIT $7 OFFSET $8`,
-      [mapId, since, minLng, minLat, maxLng, maxLat, limit, offset]
+      [mapId, since, minLng, minLat, maxLng, maxLat, limit, offset, precision]
     );
   }
 

@@ -15,20 +15,27 @@ interface ConnectionStats {
   lastCheck: number;
   samples: number;
   checkInterval: NodeJS.Timeout | null;
+  lastActive: number; // Timestamp when this connection was last active
 }
 
-// Store connection stats for each client
-const connectionStats: Record<string, ConnectionStats> = {};
-
-// Configuration
+// Configuration constants
 const STATS_MAX_SAMPLES = 10;          // Number of latency samples to keep
 const LATENCY_CHECK_INTERVAL = 15000;  // Check latency every 15 seconds
+const STATS_TTL = 30 * 60 * 1000;      // 30 minutes TTL for connection stats
+const STATS_CLEANUP_INTERVAL = 5 * 60 * 1000; // Cleanup every 5 minutes
+const MAX_STATS_ENTRIES = 5000;        // Maximum number of stats entries to store
 const LATENCY_THRESHOLDS = {
   excellent: 100,  // < 100ms
   good: 300,       // < 300ms
   poor: 1000       // < 1000ms
   // > 1000ms is considered critical
 };
+
+// Store connection stats for each client
+const connectionStats: Record<string, ConnectionStats> = {};
+
+// Setup cleanup interval
+let cleanupInterval: NodeJS.Timeout | null = null;
 
 /**
  * Setup connection quality monitoring for a socket
@@ -43,10 +50,20 @@ export function setupConnectionMonitor(socket: Socket, user: SocketUser): void {
     connectionQuality: 'excellent',
     lastCheck: Date.now(),
     samples: 0,
-    checkInterval: null
+    checkInterval: null,
+    lastActive: Date.now()
   };
   
   console.log(`[CONNECTION] Starting quality monitoring for user ${user.id}`);
+  
+  // Setup global cleanup if not already running
+  if (!cleanupInterval) {
+    cleanupInterval = setInterval(() => {
+      cleanupStaleStats();
+    }, STATS_CLEANUP_INTERVAL);
+    
+    console.log('[CONNECTION] Started global stats cleanup interval');
+  }
   
   // Setup ping interval to measure latency
   const checkInterval = setInterval(() => {
@@ -92,6 +109,9 @@ export function setupConnectionMonitor(socket: Socket, user: SocketUser): void {
         clearInterval(interval);
         connectionStats[user.id].checkInterval = null;
       }
+      
+      // We don't immediately delete the stats to allow for reconnection
+      // They will be cleaned up by the global cleanup if not reconnected
     }
   });
   
@@ -109,6 +129,7 @@ function checkConnectionQuality(socket: Socket, userId: string): void {
   
   const timestamp = Date.now();
   connectionStats[userId].lastCheck = timestamp;
+  connectionStats[userId].lastActive = timestamp;
   
   // Send ping with current timestamp as ID
   socket.emit('latency-check', { id: timestamp });
@@ -121,6 +142,7 @@ function updateLatencyStats(userId: string, latency: number): void {
   if (!connectionStats[userId]) return;
   
   const stats = connectionStats[userId];
+  stats.lastActive = Date.now();
   
   // Add latency sample
   stats.latency.push(latency);
@@ -145,6 +167,7 @@ function assessConnectionQuality(socket: Socket, userId: string): void {
   if (!connectionStats[userId]) return;
   
   const stats = connectionStats[userId];
+  stats.lastActive = Date.now();
   
   // Need at least 3 samples for reliable assessment
   if (stats.samples < 3) return;
@@ -228,4 +251,56 @@ function applyAdaptiveSettings(socket: Socket, quality: ConnectionQuality): void
     adaptations,
     timestamp: Date.now()
   });
+}
+
+/**
+ * Clean up stale connection statistics
+ */
+function cleanupStaleStats(): void {
+  const now = Date.now();
+  let cleanupCount = 0;
+  
+  // Remove stats that haven't been active in the TTL window
+  for (const userId in connectionStats) {
+    const stats = connectionStats[userId];
+    
+    if (now - stats.lastActive > STATS_TTL) {
+      // Stop any running interval
+      if (stats.checkInterval) {
+        clearInterval(stats.checkInterval);
+      }
+      
+      delete connectionStats[userId];
+      cleanupCount++;
+    }
+  }
+  
+  // If we still have too many entries, remove oldest ones
+  if (Object.keys(connectionStats).length > MAX_STATS_ENTRIES) {
+    const userIds = Object.keys(connectionStats).sort(
+      (a, b) => connectionStats[a].lastActive - connectionStats[b].lastActive
+    );
+    
+    // Calculate how many to remove
+    const removeCount = userIds.length - MAX_STATS_ENTRIES;
+    
+    // Remove oldest entries
+    for (let i = 0; i < removeCount; i++) {
+      const userId = userIds[i];
+      const stats = connectionStats[userId];
+      
+      // Stop any running interval
+      if (stats.checkInterval) {
+        clearInterval(stats.checkInterval);
+      }
+      
+      delete connectionStats[userId];
+      cleanupCount++;
+    }
+  }
+  
+  if (cleanupCount > 0) {
+    console.log(`[CONNECTION] Cleaned up ${cleanupCount} stale connection statistics`);
+    console.log(`[CONNECTION] Current stats entries: ${Object.keys(connectionStats).length}`);
+  }
 }
